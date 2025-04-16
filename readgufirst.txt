@@ -1,0 +1,14 @@
+สร้าง venv + activate แล้วลง library ที่ใส่ไว้ใน requirement
+pip install -r <path to requirement.txt>
+
+venv\Scripts\activate
+
+python gardraw15.py
+python server.py
+uvicorn server:app --host 0.0.0.0 --port 8000 --reload
+
+
+pip install cryptography
+
+use ssl
+uvicorn server:app --host 0.0.0.0 --port 8000 --ssl-keyfile certs/key.pem --ssl-certfile certs/cert.pem --reload
