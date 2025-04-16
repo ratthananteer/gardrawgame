@@ -248,7 +248,8 @@ for i, size in enumerate(brush_sizes):
         "rect": pygame.Rect(x_pos, HEIGHT - toolbar_height + 5, brush_button_size, brush_button_size),
         "size": size,
     })
-
+def generate_room_id():
+    return ''.join(random.choices('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ', k=5))
 # Initialize word hint
 def init_word_hint(word):
     global word_hint, revealed_letters, last_reveal_time, selected_word
@@ -1059,6 +1060,8 @@ while running:
                         user_data["role"] = "drawer"
                         save_user_data()
 
+                        room_input = generate_room_id()
+
                         game_instance = DrawingGame()  # สร้าง instance ใหม่
                         canvas = game_instance.canvas  # ใช้ canvas จาก game_instance
                         game_instance.network.room_id = room_input or "default_room"  # ตั้งค่าห้อง
@@ -1074,6 +1077,10 @@ while running:
                         user_data["logged_in"] = True
                         user_data["role"] = "guesser"
                         save_user_data()
+                        if not room_input:  # ถ้าไม่กรอกรหัสห้อง
+                            status_message = "Please enter room ID to join!"
+                            status_timer = 60
+                            continue
 
                         game_instance = DrawingGame()  # สร้าง instance ใหม่
                         canvas = game_instance.canvas  # ใช้ canvas จาก game_instance
@@ -1270,6 +1277,8 @@ while running:
         screen.blit(logo, (logo_x, logo_y))
         screen.blit(menu_background, (create_room_button.x - 10, input_box.y - 10))
 
+        
+        
         # Draw input box
         pygame.draw.rect(screen, WHITE, input_box, border_radius=10)
         pygame.draw.rect(screen, BLACK, input_box, 2, border_radius=10)
@@ -1282,7 +1291,13 @@ while running:
 
         screen.blit(text_surface, (input_box.x + 10, input_box.y + 10))
         # Draw new buttons with different colors
-       
+
+        if user_data.get("role") == "drawer" and room_input:
+            room_id_text = font.render(f"Room ID: {room_input}", True, WHITE)
+            room_id_rect = room_id_text.get_rect(center=(WIDTH // 2, quit_button.bottom + 60))
+            pygame.draw.rect(screen, BLACK, room_id_rect.inflate(20, 10), border_radius=5)
+            screen.blit(room_id_text, room_id_rect)
+
         pygame.draw.rect(screen, BLUE, create_room_button, border_radius=10)
         pygame.draw.rect(screen, GREEN, join_room_button, border_radius=10)
         pygame.draw.rect(screen, PURPLE, drawer_demo_button, border_radius=10)
