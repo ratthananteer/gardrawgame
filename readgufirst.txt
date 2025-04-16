@@ -14,3 +14,7 @@ use ssl
 uvicorn server:app --host 0.0.0.0 --port 8000 --ssl-keyfile certs/key.pem --ssl-certfile certs/cert.pem --reload
 
 git remote add origin https://github.com/ratthananteer/gardrawgame.git
+
+
+mkdir certs
+openssl req -x509 -newkey rsa:4096 -keyout certs/key.pem -out certs/cert.pem -days 365 -nodes
