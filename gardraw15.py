@@ -8,7 +8,7 @@ from pygame import key
 
 import asyncio
 import websockets
-from aiortc import RTCPeerConnection, RTCSessionDescription
+from aiortc import RTCPeerConnection, RTCSessionDescription , RTCIceCandidate
 import threading
 import uuid
 import ssl
@@ -751,7 +751,7 @@ class DrawingGameNetwork:
                 "User-Agent": "DrawingGame/1.0"
             })
             print(f"Player ID: {self.player_id}")
-        
+            print(f"Room ID: {self.room_id}")
             self.websocket = await websockets.connect(
                 ws_url,
                 ssl=ssl_context,             
@@ -792,6 +792,9 @@ class DrawingGameNetwork:
                     
                 elif data["type"] == "draw-data":
                     self.handle_remote_draw(data["data"])
+
+                elif data["type"] == "ice-candidate":
+                    await self.handle_ice_candidate(data)
                     
         except websockets.exceptions.ConnectionClosed:
             print("Connection to server closed")
@@ -807,7 +810,19 @@ class DrawingGameNetwork:
     async def initialize_p2p(self, target_id):
         pc = RTCPeerConnection()
         self.peer_connections[target_id] = pc
-        
+        @pc.on("icecandidate")
+        async def on_icecandidate(event):
+            if event.candidate:
+                await self.websocket.send(json.dumps({
+                    "type": "ice-candidate",
+                    "sender_id": self.player_id,
+                    "target_id": target_id,
+                    "candidate": {
+                        "candidate": event.candidate.candidate,
+                        "sdpMid": event.candidate.sdpMid,
+                        "sdpMLineIndex": event.candidate.sdpMLineIndex,
+                    }
+                }))
         channel = pc.createDataChannel("drawing")
         
         @channel.on("open")
@@ -866,8 +881,17 @@ class DrawingGameNetwork:
         )
         
     async def handle_ice_candidate(self, data):
-        pc = self.peer_connections[data["sender_id"]]
-        await pc.addIceCandidate(data["candidate"])
+        pc = self.peer_connections.get(data["sender_id"])
+        if not pc:
+            print("PeerConnection not found for ICE candidate")
+            return
+        candidate = RTCIceCandidate(
+            sdpMid=data["candidate"]["sdpMid"],
+            sdpMLineIndex=data["candidate"]["sdpMLineIndex"],
+            candidate=data["candidate"]["candidate"]
+        )
+        await pc.addIceCandidate(candidate)
+
         
     def send_drawing_data(self, draw_data):
         if hasattr(self, 'local_mode') and self.local_mode:
@@ -1064,8 +1088,8 @@ while running:
 
                         game_instance = DrawingGame()  # สร้าง instance ใหม่
                         canvas = game_instance.canvas  # ใช้ canvas จาก game_instance
-                        game_instance.network.room_id = room_input or "default_room"  # ตั้งค่าห้อง
-
+                        game_instance.network.room_id = room_input  # ตั้งค่าห้อง
+                        print(f"สร้างห้องสำเร็จ Room ID: {room_input}")
                         status_message = f"Creating room as {user_data['name']}..."
                         status_timer = 60
                         game_state = start_new_round()
@@ -1081,6 +1105,9 @@ while running:
                             status_message = "Please enter room ID to join!"
                             status_timer = 60
                             continue
+                        else:
+                            game_instance.network.room_id = room_input  # ใช้รหัสห้องที่กรอก
+                            print(f"พยายามเข้าร่วมห้อง: {room_input}")
 
                         game_instance = DrawingGame()  # สร้าง instance ใหม่
                         canvas = game_instance.canvas  # ใช้ canvas จาก game_instance
