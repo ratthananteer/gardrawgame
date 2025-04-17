@@ -727,6 +727,7 @@ class DrawingGameNetwork:
         self.data_channels = {}
         self.room_id = None
         self.room_members = []
+        self.running = True
     def set_canvas(self, canvas):
         self.canvas = canvas   
     async def connect_to_server(self):
@@ -804,13 +805,52 @@ class DrawingGameNetwork:
         except websockets.exceptions.ConnectionClosed:
             print("Connection to server closed")
             
-    async def join_room(self, room_id):
-        if self.websocket:
-            await self.websocket.send(json.dumps({
+    async def join_room(self, room_id):  
+        if not self.websocket or self.websocket.closed:
+            print("WebSocket connection is not established")
+            return False
+
+        try:
+            # ส่งคำขอเข้าร่วมห้อง
+            join_message = {
                 "type": "join_room",
                 "room_id": room_id,
-                "player_id": self.player_id
-            }))
+                "player_id": self.player_id,
+                "player_name": user_data.get("name", "Anonymous"),  # เพิ่มชื่อผู้เล่น
+                "timestamp": int(time.time())  # เพิ่ม timestamp
+            }
+        
+            await self.websocket.send(json.dumps(join_message))
+            print(f"Sent join request for room: {room_id}")
+        
+            # รอการยืนยันจากเซิร์ฟเวอร์
+            response = await asyncio.wait_for(
+                self.websocket.recv(),
+                timeout=5.0
+            )
+            response_data = json.loads(response)
+        
+            if response_data.get("type") == "room_joined":
+                self.room_id = room_id
+                self.room_members = response_data.get("members", [])
+                print(f"Successfully joined room {room_id} with members: {self.room_members}")
+            
+                # เริ่มการเชื่อมต่อ P2P กับสมาชิกอื่นในห้อง
+                for member in self.room_members:
+                    if member != self.player_id:
+                        await self.initialize_p2p(member)
+            
+                return True
+            else:
+                print(f"Failed to join room: {response_data.get('error', 'Unknown error')}")
+                return False
+            
+        except asyncio.TimeoutError:
+            print("Timeout while waiting for room join confirmation")
+            return False
+        except Exception as e:
+            print(f"Error joining room: {str(e)}")
+            return False
             
     async def initialize_p2p(self, target_id):
         pc = RTCPeerConnection()
@@ -915,15 +955,16 @@ class DrawingGameNetwork:
     def send_drawing_data(self, draw_data):
         for target_id, channel in self.data_channels.items():
             if channel.readyState == "open":
-                channel.send(json.dumps(draw_data))
+                try:
+                    channel.send(json.dumps({
+                        "type": "draw",
+                        "data": draw_data,
+                        "sender_id": self.player_id,
+                        "room_id": self.room_id
+                    }))
+                except Exception as e:
+                    print(f"Error sending drawing data: {e}")
         
-        for target_id, channel in self.data_channels.items():
-            if channel.readyState == "open":
-                channel.send(json.dumps({
-                    "type": "draw",
-                    "data": draw_data,
-                    "sender_id": self.player_id
-                }))
     
     def handle_remote_draw(self, data):
         """Handle drawing data received from other players"""
@@ -938,9 +979,40 @@ class DrawingGameNetwork:
             
         except Exception as e:
             print(f"Error handling remote draw: {e}")
+    async def sync_timer(self, duration):
+        if self.websocket:
+            await self.websocket.send(json.dumps({
+                "type": "sync_timer",
+                "duration": duration,
+                "room_id": self.room_id
+            }))
+    async def check_connection(self):
+        while self.running:
+            await asyncio.sleep(5)
+            if self.websocket and not self.websocket.closed:
+                try:
+                    await self.websocket.ping()
+                except:
+                    print("Connection lost, attempting to reconnect...")
+                    await self.connect_to_server()
+    async def join_room(self, room_id):
+        """เข้าร่วมห้องเกม"""
+        if not self.websocket or self.websocket.closed:
+            print("WebSocket connection is not established")
+            return False
 
-
-
+        try:
+            await self.websocket.send(json.dumps({
+                "type": "join_room",
+                "room_id": room_id,
+                "player_id": self.player_id,
+                "player_name": user_data["name"] if "name" in user_data else "Anonymous"
+            }))
+            print(f"Sent join request for room: {room_id}")
+            return True
+        except Exception as e:
+            print(f"Error joining room: {str(e)}")
+            return False
 '''#####################################################################################'''
 class DrawingGame:
     def __init__(self, room=None):
@@ -1018,7 +1090,11 @@ class DrawingGame:
             
             # เชื่อมต่อเซิร์ฟเวอร์และเข้าร่วมห้อง
             loop.run_until_complete(self.network.connect_to_server())
-            loop.run_until_complete(self.network.join_room(room_id))
+
+            loop.create_task(self.network.check_connection())
+            
+            if self.network.room_id:
+                loop.run_until_complete(self.network.join_room(room_id))
             
             # รัน event loop ต่อเนื่อง
             loop.run_forever()
@@ -1074,7 +1150,24 @@ class DrawingGame:
         self.countdown_running = True
         self.last_tick = time.time()
 
-
+    def draw_player_list(self):
+        """แสดงรายชื่อผู้เล่นในห้อง"""
+        if hasattr(self.network, 'room_members') and self.network.room_members:
+            # กำหนดขนาดและตำแหน่งของกล่องรายชื่อผู้เล่น
+            player_list_bg = pygame.Surface((200, 150), pygame.SRCALPHA)
+            player_list_bg.fill((0, 0, 0, 180))  # สีดำโปร่งใส
+            screen.blit(player_list_bg, (10, 160))  # ตำแหน่งมุมบนซ้าย
+            
+            # หัวข้อ
+            title = font.render("Players in room:", True, WHITE)
+            screen.blit(title, (20, 170))
+            
+            # รายชื่อผู้เล่น
+            for i, player in enumerate(self.network.room_members):
+                player_color = get_player_color(player)
+                pygame.draw.circle(screen, player_color, (30, 200 + i * 30), 5)
+                player_text = font.render(player, True, WHITE)
+                screen.blit(player_text, (40, 195 + i * 30))
 
 
 # Main game loop
@@ -1089,6 +1182,8 @@ while running:
     # Update word hint if in drawing mode
     if game_state in [DRAWING, GUESSING] and selected_word:
         update_word_hint()
+        if game_instance:
+            game_instance.draw_player_list()
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
