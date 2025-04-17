@@ -1,0 +1,13 @@
+C:\Users\User\Downloads\gardrawgame-main\gardrawgame-main>python gardraw15.py
+pygame 2.6.1 (SDL 2.28.4, Python 3.11.9)
+Hello from the pygame community. https://www.pygame.org/contribute.html
+Connecting with Origin: https://localhost
+WebSocket URL: wss://localhost:8000/ws/fca720cd-59dd-429a-a9d7-1a68a6d6d104
+Headers: {'Origin': 'https://localhost', 'User-Agent': 'DrawingGame/1.0'}
+Player ID: fca720cd-59dd-429a-a9d7-1a68a6d6d104
+Connection error: [WinError 1225] The remote computer refused the network connection
+Connecting with Origin: https://localhost
+WebSocket URL: wss://localhost:8000/ws/oakkk
+Headers: {'Origin': 'https://localhost', 'User-Agent': 'DrawingGame/1.0'}
+Player ID: oakkk
+Connection error: [WinError 1225] The remote computer refused the network connection
