@@ -656,10 +656,13 @@ def start_new_round():
     chat_messages.append(f"System: {game_session['current_drawer']} is drawing!")
     
     if game_instance:
-        asyncio.run_coroutine_threadsafe(
-            game_instance.network.sync_timer(game_session["round_duration"]),
-            game_instance.network.loop
-        )
+        try:
+            asyncio.run_coroutine_threadsafe(
+                game_instance.network.sync_timer(game_session["round_duration"]),
+                game_instance.network.loop
+            )
+        except Exception as e:
+            print(f"Error syncing timer: {e}")
 
     # Only drawer can select word
     if user_data["role"] == "drawer":
@@ -746,8 +749,8 @@ class DrawingGameNetwork:
         self.websocket = None
         self.peer_connections = {}
         self.data_channels = {}
-        self.room_id = None
-        self.room_members = []
+        #self.room_members = []
+        self.loop = asyncio.new_event_loop() 
         self.running = True
     def set_canvas(self, canvas):
         self.canvas = canvas   
@@ -1148,7 +1151,7 @@ class DrawingGame:
         # If we're dragging to draw
         elif event.type == pygame.MOUSEMOTION and self.drawing:
             if self.last_pos:
-                # Draw locally
+                
                 pygame.draw.line(self.canvas, self.current_color,
                            self.last_pos, current_pos,
                            self.brush_size)
