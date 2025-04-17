@@ -735,13 +735,14 @@ class DrawingGameNetwork:
             ssl_context.check_hostname = False
             ssl_context.verify_mode = ssl.CERT_NONE # สำหรับการทดสอบ
             headers = {
-            "Origin": "https://localhost",
+            "Origin": "https://192.168.2.69",
             "User-Agent": "DrawingGame/1.0",
             "Sec-WebSocket-Protocol": "chat"
         }
             
             
-            ws_url = f"wss://localhost:8000/ws/{self.player_id}"
+            ws_url = f"wss://192.168.2.69:8000/ws/{self.player_id}"
+
             
             #ws_url = f"ws://localhost:8000/ws/{self.player_id}"
             print("Connecting with Origin: https://localhost")
