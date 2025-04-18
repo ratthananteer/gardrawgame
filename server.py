@@ -100,7 +100,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
     "http://localhost:8000", 
     "https://localhost:8000",
     #"http://192.168.2.69",
-    #"https://192.168.2.69",
+    "https://192.168.2.69",
     None
 ]
     
@@ -153,10 +153,25 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                     room_id = message.get("room_id")
                     if room_id and room_id in manager.rooms:
                         await manager.broadcast_to_room(
-                            data,
-                            room_id,
-                            exclude_client_id=client_id
-                        )
+                            json.dumps({
+                                "type": "draw-data",
+                                "data": message["data"],
+                                "sender_id": message["sender_id"],
+                                "room_id": room_id
+                            }),
+                                room_id,
+                                exclude_client_id=message["sender_id"]
+                             )
+                elif message["type"] == "sync_timer":
+                    room_id = message.get("room_id")
+                    if room_id and room_id in manager.rooms:
+                        await manager.broadcast_to_room(
+                            json.dumps({
+                                "type": "start_timer",
+                                "time": message["duration"]
+                            }),
+                                room_id
+                            )        
                 
             except json.JSONDecodeError:
                 logger.error(f"Invalid JSON from {client_id}")
