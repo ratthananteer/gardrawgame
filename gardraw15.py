@@ -752,6 +752,8 @@ class DrawingGameNetwork:
         #self.room_members = []
         self.loop = asyncio.new_event_loop() 
         self.running = True
+        self.timer_callback = None
+
     def set_canvas(self, canvas):
         self.canvas = canvas   
     async def connect_to_server(self):
@@ -937,10 +939,14 @@ class DrawingGameNetwork:
                 #self.handle_remote_draw(json.loads(msg))
                 data = json.loads(msg)
                 if data["type"] == "start_timer":
-                    print(f"⏱️ Timer started for {data['time']} seconds")
-                    self.start_countdown(data["time"])  # เรียกใช้ฟังก์ชันเริ่มจับเวลา
+                    print(f" Timer started for {data['time']} seconds")
+                    if self.timer_callback:
+                        self.timer_callback(data["time"])
+                    else:
+                        print("⚠️ No timer callback set!")
                 elif data["type"] in ["draw", "draw_start"]:
-                    self.handle_remote_draw(data)
+                     self.handle_remote_draw(data)
+                
         
         await pc.setRemoteDescription(
             RTCSessionDescription(sdp=data["offer"]["sdp"], type=data["offer"]["type"])
@@ -1043,6 +1049,10 @@ class DrawingGameNetwork:
         except Exception as e:
             print(f"Error joining room: {str(e)}")
             return False
+        
+    def set_timer_callback(self, callback):
+        self.timer_callback = callback
+       
 '''#####################################################################################'''
 class DrawingGame:
     def __init__(self, room=None):
@@ -1067,7 +1077,7 @@ class DrawingGame:
         self.network_thread.daemon = True
         self.network_thread.start()
         self.running = True
-
+        self.network.set_timer_callback(self.start_countdown)
     def run(self):
         import pygame
         clock = pygame.time.Clock()
@@ -1104,6 +1114,7 @@ class DrawingGame:
 
     def draw(self):
         self.canvas.fill((255, 255, 255))  # ตัวอย่างการเคลียร์หน้าจอ
+        screen.blit(self.canvas, (0, 0))
         if self.countdown_running:
             font = pygame.font.SysFont(None, 48)
             text_surface = font.render(f" Time Left: {self.countdown_time}", True, (255, 0, 0))
