@@ -645,15 +645,15 @@ def start_new_round():
     
     # Increment round counter
     game_session["round"] += 1
-    
-    # Set round timer (90 seconds)
-    game_session["round_start_time"] = pygame.time.get_ticks()
-    game_session["round_end_time"] = game_session["round_start_time"] + (game_session["round_duration"] * 1000)
-    
+  
     # Reset chat messages
     chat_messages = []
     chat_messages.append(f"System: Round {game_session['round']} started!")
     chat_messages.append(f"System: {game_session['current_drawer']} is drawing!")
+    
+     # Set round timer (90 seconds)
+    game_session["round_start_time"] = pygame.time.get_ticks()
+    game_session["round_end_time"] = game_session["round_start_time"] + (game_session["round_duration"] * 1000)
     
     if game_instance:
         try:
@@ -995,18 +995,18 @@ class DrawingGameNetwork:
             return
         
         for target_id, channel in self.data_channels.items():
-            if channel.readyState == "open":
-                try:
+            try:
+                if channel.readyState == "open":  # ตรวจสอบสถานะที่ถูกต้อง
                     channel.send(json.dumps({
-                        "type": "draw",
-                        "data": draw_data,
-                        "sender_id": self.player_id,
-                        "room_id": self.room_id
-                    }))
-                except Exception as e:
-                    print(f"Error sending drawing data: {e}")
-        else:
-            print(f"❗ Data channel to {target_id} is not open (state: {channel.readyState})") 
+                    "type": "draw",
+                    "data": draw_data,
+                    "sender_id": self.player_id,
+                    "room_id": self.room_id
+                }))
+                else:
+                    print(f"Channel to {target_id} is not open (state: {channel.readyState})")
+            except Exception as e:
+                print(f"Error sending drawing data to {target_id}: {e}")
     
     def handle_remote_draw(self, data):
         """Handle drawing data received from other players"""
@@ -1043,6 +1043,8 @@ class DrawingGameNetwork:
                 "room_id": self.room_id,
                 "sender_id": self.player_id
             }))
+        else:
+            print("WebSocket connection not available for timer sync")
     async def check_connection(self):
         while self.running:
             await asyncio.sleep(5)
