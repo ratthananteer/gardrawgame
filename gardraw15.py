@@ -934,20 +934,27 @@ class DrawingGameNetwork:
             print(f"Data channel received from {data['sender_id']}")
             self.data_channels[data["sender_id"]] = channel
             
+            @channel.on("open")
+            def on_open():
+                print(f"✅ Data channel with {data['sender_id']} is open and ready.")
+            
             @channel.on("message")
             def on_message(msg):
-                #self.handle_remote_draw(json.loads(msg))
-                data = json.loads(msg)
-                if data["type"] == "start_timer":
-                    print(f" Timer started for {data['time']} seconds")
-                    if self.timer_callback:
-                        self.timer_callback(data["time"])
-                    else:
-                        print("⚠️ No timer callback set!")
-                elif data["type"] in ["draw", "draw_start"]:
-                     self.handle_remote_draw(data)
+                try: 
+                    data = json.loads(msg)
+
+                    if data["type"] == "start_timer":
+                        print(f" Timer started for {data['time']} seconds")
+                        if self.timer_callback:
+                            self.timer_callback(data["time"])
+                        else:
+                            print("⚠️ No timer callback set!")
+                    elif data["type"] in ["draw", "draw_start"]:
+                        self.handle_remote_draw(data)
+                    self.handle_drawing_data(msg, sender_id=data["sender_id"])
                 
-        
+                except Exception as e:
+                    print(f"❌ Failed to process message: {e}")
         await pc.setRemoteDescription(
             RTCSessionDescription(sdp=data["offer"]["sdp"], type=data["offer"]["type"])
         )
@@ -998,19 +1005,33 @@ class DrawingGameNetwork:
                     }))
                 except Exception as e:
                     print(f"Error sending drawing data: {e}")
-        
+        else:
+            print(f"❗ Data channel to {target_id} is not open (state: {channel.readyState})") 
     
     def handle_remote_draw(self, data):
         """Handle drawing data received from other players"""
         try:
-            print(f" Received drawing data: {data}")  # Debug log
-            if data["type"] == "draw_start":
-                pygame.draw.circle(self.canvas, data["color"], 
-                             data["pos"], data["brush_size"]//2)
-            elif data["type"] == "draw":
-                pygame.draw.line(self.canvas, data["color"], 
-                           data["start_pos"], data["end_pos"], 
-                           data["brush_size"])
+            print(f" Received drawing data: {data}") 
+
+            draw_data = data.get("data", {})
+            draw_type = draw_data.get("type")
+
+            if draw_type == "draw_start":
+                pygame.draw.circle(
+                    self.canvas,
+                    draw_data["color"],
+                    draw_data["pos"],
+                    draw_data["brush_size"] // 2
+            )
+
+            elif draw_type == "draw":
+                pygame.draw.line(
+                    self.canvas,
+                    draw_data["color"],
+                    draw_data["start_pos"],
+                    draw_data["end_pos"],
+                    draw_data["brush_size"]
+                )
             
         except Exception as e:
             print(f"Error handling remote draw: {e}")
@@ -1162,6 +1183,12 @@ class DrawingGame:
                 "sender_id": self.network.player_id,
                 "room_id": self.network.room_id
             }
+            if self.network.data_channels:
+                for ch in self.network.data_channels.values():
+                    if ch.readyState != "open":
+                        print("⏳ Waiting for data channel to open...")
+                        return  # ยังไม่พร้อมก็ไม่ส่ง
+
             self.network.send_drawing_data(draw_data)
     
         # If we're dragging to draw
