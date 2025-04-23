@@ -927,12 +927,14 @@ class DrawingGameNetwork:
         
         @pc.on("datachannel")
         def on_datachannel(channel):
-            print(f"Data channel received from {data['sender_id']}")
+
             self.data_channels[data["sender_id"]] = channel
-            
+            print(f"Data channel received from {data['sender_id']}")
+
             @channel.on("open")
             def on_open():
                 print(f"✅ Data channel with {data['sender_id']} is open and ready.")
+                self.channel_ready = True
             
             @channel.on("message")
             def on_message(msg):
@@ -1087,6 +1089,7 @@ class DrawingGameNetwork:
         "type": "ping"
         }
         for target_id, channel in self.data_channels.items():
+            print(f"📤 Attempting to ping {target_id}, readyState: {channel.readyState}")
             if channel.readyState == "open":
                 print(f"📤 Sending ping to {target_id}")
                 channel.send(json.dumps(message))
@@ -1413,6 +1416,9 @@ while running:
                         room_input = room_input[:-1]
                     else:
                         room_input += event.unicode
+                if event.key == pygame.K_p:
+                    if game_instance and game_instance.network:
+                        game_instance.network.send_test_ping()
 
         elif game_state == WORD_CHOOSING:
             selected_word, game_state = word_selection_screen(screen, "words.json")
@@ -1424,6 +1430,7 @@ while running:
                     scores[user_data["name"]] = 0
 
         elif game_state == DRAWING:
+            
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
                     # Check UI elements first
@@ -1443,6 +1450,9 @@ while running:
                         status_timer = 30
                     elif chat_input_box.collidepoint(event.pos) and user_data["role"] == "guesser" and user_data["name"] not in game_session["correct_guessers"]:
                         chat_active = True
+                    
+                        
+
                     else:
                         # Check brush size buttons
                         for i, btn in enumerate(brush_size_buttons):
@@ -1478,7 +1488,7 @@ while running:
                                 pygame.draw.circle(canvas, active_color, last_pos, active_brushsize // 2)
                                 if user_data["role"] == "drawer" and game_instance:
                                     game_instance.handle_drawing_event(event)
-
+                    
 
             elif event.type == pygame.MOUSEBUTTONUP:
                 if event.button == 1:
