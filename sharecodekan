@@ -752,6 +752,7 @@ class DrawingGameNetwork:
         #self.room_members = []
         self.loop = asyncio.new_event_loop() 
         self.running = True
+        self.channel_ready = False
         self.timer_callback = None
 
     def set_canvas(self, canvas):
@@ -879,17 +880,24 @@ class DrawingGameNetwork:
             return False
             
     async def initialize_p2p(self, target_id):
+        print(f"Initializing P2P connection with {target_id}")
         pc = RTCPeerConnection()
         self.peer_connections[target_id] = pc
+        print(f"Created RTCPeerConnection for {target_id}")
 
         channel = pc.createDataChannel("drawing")
         self.data_channels[target_id] = channel 
         
         @channel.on("open")
         def on_open():
-            print(f"Data channel opened with {target_id}")
+            print(f"✅ Data channel with {target_id} is REALLY open!")
             self.data_channels[target_id] = channel
-            
+            def delay_flag():
+                time.sleep(0.5)
+                self.channel_ready = True
+
+            threading.Thread(target=delay_flag).start()
+       
         @channel.on("message")
         def on_message(msg):
             try:
@@ -907,6 +915,11 @@ class DrawingGameNetwork:
                     "target_id": target_id,
                     "candidate": event.candidate.to_json()
                 }))
+        @pc.on("iceconnectionstatechange")
+        def on_ice_connection_state_change():
+            print(f"ICE connection state changed to: {pc.iceConnectionState}")
+            if pc.iceConnectionState == "failed":
+                print("ICE Connection failed!")
         
         def broadcast_start_timer(self, seconds):
             message = {
@@ -917,7 +930,7 @@ class DrawingGameNetwork:
                 if channel.readyState == "open":
                     channel.send(json.dumps(message))
     
-        
+        await asyncio.sleep(1)
         offer = await pc.createOffer()
         await pc.setLocalDescription(offer)
         
@@ -933,7 +946,7 @@ class DrawingGameNetwork:
         pc = RTCPeerConnection()
         self.peer_connections[data["sender_id"]] = pc
         
-        @pc.ondatachannel
+        @pc.on("datachannel")
         def on_datachannel(channel):
             print(f"Data channel received from {data['sender_id']}")
             self.data_channels[data["sender_id"]] = channel
@@ -1002,10 +1015,11 @@ class DrawingGameNetwork:
         for target_id, channel in list(self.data_channels.items()):
             try:
                 if hasattr(channel, 'readyState') and channel.readyState == 'open':
-                    channel.send(json.dumps(draw_data))
+                   channel.send(json.dumps(draw_data))
+                   print(f"✅ Sent drawing data to {target_id}")  
                 else:
                     print(f"Channel to {target_id} not ready, state: {getattr(channel, 'readyState', 'unknown')}")
-                    self.data_channels.pop(target_id, None)
+                    
             except Exception as e:
                 print(f"Error sending drawing data to {target_id}: {e}")
                 self.data_channels.pop(target_id, None)
@@ -1217,6 +1231,9 @@ class DrawingGame:
                      "sender_id": self.network.player_id,
                     "room_id": self.network.room_id
                 }
+                if not self.network.channel_ready:
+                    print("⏳ Data channel not ready yet, please wait...")
+                    return
                 self.network.send_drawing_data(draw_data)
         
             self.last_pos = current_pos
