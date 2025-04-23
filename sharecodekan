@@ -306,7 +306,7 @@ def check_guess(guess):
 # Draw scoreboard
 def draw_scoreboard():
     # Background
-    pygame.draw.rect(screen, DARK_GRAY, (10, 10, 200, 150))
+    pygame.draw.rect(screen, DARK_GRAY, (10, 10, 200, 200)) 
     
     # Title
     title = font.render("Scoreboard", True, WHITE)
@@ -348,7 +348,7 @@ def draw_scoreboard():
         if i >= 3:  # Limit to top 3 players
             break
         player_text = font.render(f"{i+1}. {name}: {score}", True, WHITE)
-        screen.blit(player_text, (20, 20 + y_offset))
+        screen.blit(player_text, (20, 20 + y_offset + 50))
         y_offset += 25
 
 # Draw chat
@@ -907,7 +907,8 @@ class DrawingGameNetwork:
         @channel.on("message")
         def on_message(msg):
             data = json.loads(msg)
-            self.handle_remote_draw(data)
+            if data["type"] in ["draw", "draw_start"]:
+                self.handle_remote_draw(data)
         
         offer = await pc.createOffer()
         await pc.setLocalDescription(offer)
@@ -942,10 +943,14 @@ class DrawingGameNetwork:
                         print(f" Timer started for {data['time']} seconds")
                         if self.timer_callback:
                             self.timer_callback(data["time"])
+                        if "drawer" in data:
+                            game_session["current_drawer"] = data["drawer"]  # ✅ เพิ่มตรงนี้
+                    elif data["type"] in ["draw", "draw-data"]: #"draw_start"
+                        print(f"Received drawing data: {data}")
+                        if "data" in data:
+                            self.handle_remote_draw(data["data"])  # ✅ ถอดข้อมูลซ้อนออก
                         else:
-                            print("⚠️ No timer callback set!")
-                    elif data["type"] in ["draw", "draw_start"]:
-                        self.handle_remote_draw(data)
+                            self.handle_remote_draw(data)
                     self.handle_drawing_data(msg, sender_id=data["sender_id"])
                 
                 except Exception as e:
@@ -1073,7 +1078,8 @@ class DrawingGameNetwork:
     def broadcast_start_timer(self, seconds):
         message = {
             "type": "start_timer",
-            "time": seconds
+            "time": seconds,
+            "drawer": game_session["current_drawer"]
         }
         for target_id, channel in self.data_channels.items():
             try:
