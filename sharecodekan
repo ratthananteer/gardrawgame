@@ -1274,10 +1274,10 @@ while running:
     # Update word hint if in drawing mode
     if game_state in [DRAWING, GUESSING] and selected_word:
         update_word_hint()
-        if game_instance:
-            if user_data["role"] == "drawer":
-                game_instance.network.broadcast_start_timer(game_session["round_duration"])
-                game_instance.draw_player_list()
+        # if game_instance:
+        #     if user_data["role"] == "drawer":
+        #         game_instance.network.broadcast_start_timer(game_session["round_duration"])
+        #         game_instance.draw_player_list()
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -1315,12 +1315,12 @@ while running:
                         room_input = generate_room_id()
 
                         game_instance = DrawingGame(room=room_input)
-
                         canvas = game_instance.canvas  # ใช้ canvas จาก game_instance
                         game_instance.network.room_id = room_input  # ตั้งค่าห้อง
-                        print(f"สร้างห้องสำเร็จ Room ID: {room_input}")
+                        
+                        print(f"สร้างห้องสำเร็จ Room ID: {room_input}")       
                         status_message = f"Creating room as {user_data['name']}..."
-                        status_timer = 60
+                       
                         for _ in range(50):  # 50 * 0.1s = 5 วินาที
                             if game_instance.network.is_channel_ready():
                                 break
@@ -1342,9 +1342,14 @@ while running:
                             game_instance = DrawingGame(room=room_input)  
                             canvas = game_instance.canvas
                             print(f"พยายามเข้าร่วมห้อง: {room_input}")
-
-                       
+                        
                         game_instance.network.room_id = room_input or "default_room"  # ตั้งค่าห้อง
+
+                        for _ in range(50):  # รอ channel เปิด
+                            if game_instance.network.is_channel_ready():
+                                break
+                            time.sleep(0.1)
+                        
 
                         status_message = f"Joining room as {user_data['name']}..."
                         status_timer = 60
@@ -1691,11 +1696,11 @@ while running:
 
     pygame.display.flip()
 
-if game_instance:
-    if user_data["role"] == "drawer":
-        game_instance.network.broadcast_start_timer(game_session["round_duration"])
-        game_instance.running = False  # ส่งสัญญาณให้ network thread หยุดทำงาน
-        if hasattr(game_instance, 'network_thread') and game_instance.network_thread.is_alive():
-            game_instance.network_thread.join()  # รอให้ thread ทำงานเสร็จ
+# if game_instance:
+#     if user_data["role"] == "drawer":
+#         game_instance.network.broadcast_start_timer(game_session["round_duration"])
+#         game_instance.running = False  # ส่งสัญญาณให้ network thread หยุดทำงาน
+#         if hasattr(game_instance, 'network_thread') and game_instance.network_thread.is_alive():
+#             game_instance.network_thread.join()  # รอให้ thread ทำงานเสร็จ
 pygame.quit()
 
