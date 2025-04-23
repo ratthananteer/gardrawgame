@@ -168,9 +168,11 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                         await manager.broadcast_to_room(
                             json.dumps({
                                 "type": "start_timer",
-                                "time": message["duration"]
+                                "time": message["duration"],
+                                "room_id": room_id
                             }),
-                                room_id
+                                room_id,
+                                exclude_client_id=client_id
                             )        
                 
             except json.JSONDecodeError:
