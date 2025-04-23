@@ -656,6 +656,8 @@ def start_new_round():
     game_session["round_end_time"] = game_session["round_start_time"] + (game_session["round_duration"] * 1000)
     
     if game_instance:
+        if user_data["role"] == "drawer":
+            game_instance.network.broadcast_start_timer(game_session["round_duration"])
         try:
             asyncio.run_coroutine_threadsafe(
                 game_instance.network.sync_timer(game_session["round_duration"]),
@@ -742,8 +744,18 @@ def all_players_guessed():
 
 
 # oak code
+def broadcast_start_timer(self, seconds):
+    message = {
+        "type": "start_timer",
+        "time": seconds
+    }
+    for target_id, channel in self.data_channels.items():
+        if channel.readyState == "open":
+            channel.send(json.dumps(message))
+
 class DrawingGameNetwork:
     def __init__(self, player_id, room_id="default_room"):
+        self.channel_ready = False
         self.player_id = player_id
         self.room_id = room_id
         self.websocket = None
@@ -753,8 +765,6 @@ class DrawingGameNetwork:
         self.loop = asyncio.new_event_loop() 
         self.running = True
         self.timer_callback = None
-        self.channel_ready = False
-
 
     def set_canvas(self, canvas):
         self.canvas = canvas   
@@ -909,7 +919,8 @@ class DrawingGameNetwork:
         @channel.on("open")
         def on_open():
             print(f"Data channel opened with {target_id}")
-            self.channel_ready = True
+            self.data_channels[target_id] = channel
+        self.channel_ready = True
             
         @channel.on("message")
         def on_message(msg):
@@ -953,7 +964,7 @@ class DrawingGameNetwork:
                             print("⚠️ No timer callback set!")
                     elif data["type"] in ["draw", "draw_start"]:
                         self.handle_remote_draw(data)
-                    
+                    self.handle_drawing_data(msg, sender_id=data["sender_id"])
                 
                 except Exception as e:
                     print(f"❌ Failed to process message: {e}")
@@ -1010,12 +1021,13 @@ class DrawingGameNetwork:
             except Exception as e:
                 print(f"Error sending drawing data to {target_id}: {e}")
     
-    def handle_remote_draw(self, draw_data):
+    def handle_remote_draw(self, data):
         """Handle drawing data received from other players"""
         try:
-            print(f"🎨 Received drawing data: {draw_data}")
+            print(f" Received drawing data: {data}") 
+
+            draw_data = data
             draw_type = draw_data.get("type")
-            
 
             if draw_type == "draw_start":
                 pygame.draw.circle(
@@ -1032,11 +1044,10 @@ class DrawingGameNetwork:
                     draw_data["start_pos"],
                     draw_data["end_pos"],
                     draw_data["brush_size"] // 2
-)
+                )
             
         except Exception as e:
             print(f"Error handling remote draw: {e}")
-
     async def sync_timer(self, duration):
         if self.websocket:
             await self.websocket.send(json.dumps({
@@ -1138,6 +1149,7 @@ class DrawingGame:
 
 
     def draw(self):
+        #self.canvas.fill((255, 255, 255))  
         screen.blit(self.canvas, (0, 0))
         if self.countdown_running:
             font = pygame.font.SysFont(None, 48)
@@ -1186,11 +1198,15 @@ class DrawingGame:
                 "sender_id": self.network.player_id,
                 "room_id": self.network.room_id
             }
-        
+            if self.network.data_channels:
+                for ch in self.network.data_channels.values():
+                    if ch.readyState != "open":
+                        print("⏳ Waiting for data channel to open...")
+                        return  # ยังไม่พร้อมก็ไม่ส่ง
+
             if not self.network.channel_ready:
                 print("⏳ Data channel not ready yet")
                 return
-
             self.network.send_drawing_data(draw_data)
     
         # If we're dragging to draw
@@ -1211,6 +1227,9 @@ class DrawingGame:
                      "sender_id": self.network.player_id,
                     "room_id": self.network.room_id
                 }
+                if not self.network.channel_ready:
+                    print("⏳ Data channel not ready yet")
+                    return
                 self.network.send_drawing_data(draw_data)
         
             self.last_pos = current_pos
@@ -1257,16 +1276,20 @@ while running:
     if game_state in [DRAWING, GUESSING] and selected_word:
         update_word_hint()
         if game_instance:
-            game_instance.draw_player_list()
+            if user_data["role"] == "drawer":
+                game_instance.network.broadcast_start_timer(game_session["round_duration"])
+                game_instance.draw_player_list()
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             user_data["logged_in"] = False
             save_user_data()
-            if game_instance:  # ปิด network ก่อนออก
-                game_instance.running = False
-                if hasattr(game_instance, 'network_thread'):
-                    game_instance.network_thread.join()
+            if game_instance:
+                if user_data["role"] == "drawer":
+                    game_instance.network.broadcast_start_timer(game_session["round_duration"])  # ปิด network ก่อนออก
+                    game_instance.running = False
+                    if hasattr(game_instance, 'network_thread'):
+                        game_instance.network_thread.join()
             running = False
 
         elif game_state == MENU:
@@ -1568,7 +1591,7 @@ while running:
 
     elif game_state == DRAWING:
         # Draw canvas area
-        screen.blit(game_instance.canvas, (0, 0))
+        screen.blit(canvas, (0, 0))
 
         # Draw new features
         if selected_word:
@@ -1642,7 +1665,7 @@ while running:
 
     elif game_state == GUESSING:
         # Draw canvas area
-        screen.blit(game_instance.canvas, (0, 0))
+        screen.blit(canvas, (0, 0))
 
         # Draw UI elements
         if selected_word:
@@ -1666,9 +1689,11 @@ while running:
     pygame.display.flip()
 
 if game_instance:
-    game_instance.running = False  # ส่งสัญญาณให้ network thread หยุดทำงาน
-    if hasattr(game_instance, 'network_thread') and game_instance.network_thread.is_alive():
-        game_instance.network_thread.join()  # รอให้ thread ทำงานเสร็จ
+    if user_data["role"] == "drawer":
+        game_instance.network.broadcast_start_timer(game_session["round_duration"])
+        game_instance.running = False  # ส่งสัญญาณให้ network thread หยุดทำงาน
+        if hasattr(game_instance, 'network_thread') and game_instance.network_thread.is_alive():
+            game_instance.network_thread.join()  # รอให้ thread ทำงานเสร็จ
 pygame.quit()
 
 
