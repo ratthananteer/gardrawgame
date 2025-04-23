@@ -902,7 +902,7 @@ class DrawingGameNetwork:
         def on_open():
             print(f"Data channel opened with {target_id}")
             self.data_channels[target_id] = channel
-        self.channel_ready = True
+            self.channel_ready = True
             
         @channel.on("message")
         def on_message(msg):
@@ -985,23 +985,21 @@ class DrawingGameNetwork:
 
         
     def send_drawing_data(self, draw_data):
-        if not hasattr(self, 'data_channels') or not self.data_channels:
-            print("⚠️ No active data channels to send drawing data")
+        if not hasattr(self, 'data_channels') or not self.is_channel_ready():
+            print("⏳ Cannot send drawing data: Channel not ready")
             return
         
         for target_id, channel in self.data_channels.items():
-            try:
-                if channel.readyState == "open":  # ตรวจสอบสถานะที่ถูกต้อง
+            if channel.readyState == "open":
+                try:
                     channel.send(json.dumps({
                     "type": "draw",
                     "data": draw_data,
                     "sender_id": self.player_id,
                     "room_id": self.room_id
-                }))
-                else:
-                    print(f"Channel to {target_id} is not open (state: {channel.readyState})")
-            except Exception as e:
-                print(f"Error sending drawing data to {target_id}: {e}")
+                    }))
+                except Exception as e:
+                    print(f"Error sending drawing data to {target_id}: {e}")
     
     def handle_remote_draw(self, data):
         """Handle drawing data received from other players"""
@@ -1323,6 +1321,10 @@ while running:
                         print(f"สร้างห้องสำเร็จ Room ID: {room_input}")
                         status_message = f"Creating room as {user_data['name']}..."
                         status_timer = 60
+                        for _ in range(50):  # 50 * 0.1s = 5 วินาที
+                            if game_instance.network.is_channel_ready():
+                                break
+                            time.sleep(0.1)
                         game_state = start_new_round()
                         
                     elif join_room_button.collidepoint(event.pos):
