@@ -887,51 +887,50 @@ class DrawingGameNetwork:
             return False
             
     async def initialize_p2p(self, target_id):
-        pc = RTCPeerConnection()
-        self.peer_connections[target_id] = pc
-        @pc.on("icecandidate")
-        async def on_icecandidate(event):
-            if event.candidate:
-                await self.websocket.send(json.dumps({
-                    "type": "ice-candidate",
-                    "sender_id": self.player_id,
-                    "target_id": target_id,
-                    "candidate": {
-                        "candidate": event.candidate.candidate,
-                        "sdpMid": event.candidate.sdpMid,
-                        "sdpMLineIndex": event.candidate.sdpMLineIndex,
-                    }
-                }))
-        channel = pc.createDataChannel("drawing")
-        def broadcast_start_timer(self, seconds):
-            message = {
-                "type": "start_timer",
-                "time": seconds
-            }
-            for target_id, channel in self.data_channels.items():
-                if channel.readyState == "open":
-                    channel.send(json.dumps(message))
+        try:
+            pc = RTCPeerConnection()
+            self.peer_connections[target_id] = pc
+        
+            @pc.on("icecandidate")
+            async def on_icecandidate(event):
+                if event.candidate:
+                    await self.send_ice_candidate(target_id, event.candidate)
 
-        @channel.on("open")
-        def on_open():
-            print(f"Data channel opened with {target_id}")
-            self.channel_ready = True
+            @pc.on("iceconnectionstatechange")
+            def on_ice_connection_state_change():
+                print(f"ICE state: {pc.iceConnectionState}")
+
+            channel = pc.createDataChannel("drawing")
+        
+            @channel.on("open")
+            def on_open():
+                print(f"✅ Data channel with {target_id} is OPEN!")
+                self.data_channels[target_id] = channel
+                self.channel_ready = True
             
-        @channel.on("message")
-        def on_message(msg):
-            data = json.loads(msg)
-            self.handle_remote_draw(data)
+            @channel.on("message")
+            def on_message(msg):
+                try:
+                    data = json.loads(msg)
+                    self.handle_remote_draw(data)
+                except Exception as e:
+                    print(f"Error processing message: {e}")
+
+            offer = await pc.createOffer()
+            await pc.setLocalDescription(offer)
         
-        offer = await pc.createOffer()
-        await pc.setLocalDescription(offer)
+            await self.websocket.send(json.dumps({
+                "type": "offer",
+                "sender_id": self.player_id,
+                "target_id": target_id,
+                "offer": {"sdp": pc.localDescription.sdp, "type": pc.localDescription.type},
+                "room_id": self.room_id
+            }))
         
-        await self.websocket.send(json.dumps({
-            "type": "offer",
-            "sender_id": self.player_id,
-            "target_id": target_id,
-            "offer": {"sdp": pc.localDescription.sdp, "type": pc.localDescription.type},
-            "room_id": self.room_id
-        }))
+        except Exception as e:
+            print(f"❌ P2P initialization failed: {e}")
+            if pc:
+                await pc.close()
         
     async def handle_offer(self, data):
         pc = RTCPeerConnection()
@@ -1005,12 +1004,8 @@ class DrawingGameNetwork:
         for target_id, channel in self.data_channels.items():
             try:
                 if channel.readyState == "open":  # ตรวจสอบสถานะที่ถูกต้อง
-                    channel.send(json.dumps({
-                    "type": "draw",
-                    "data": draw_data,
-                    "sender_id": self.player_id,
-                    "room_id": self.room_id
-                }))
+                    channel.send(json.dumps(draw_data))
+                    print(f"✅ Sent drawing data to {target_id}")
                 else:
                     print(f"Channel to {target_id} is not open (state: {channel.readyState})")
             except Exception as e:
@@ -1084,6 +1079,16 @@ class DrawingGameNetwork:
     def set_timer_callback(self, callback):
         self.timer_callback = callback
        
+
+    def broadcast_start_timer(self, seconds):
+            message = {
+                "type": "start_timer",
+                "time": seconds
+            }
+            for target_id, channel in self.data_channels.items():
+                if channel.readyState == "open":
+                    channel.send(json.dumps(message))
+
 '''#####################################################################################'''
 class DrawingGame:
     def __init__(self, room=None):
@@ -1175,6 +1180,12 @@ class DrawingGame:
             loop.close()
         
     def handle_drawing_event(self, event):
+
+        if not hasattr(self.network, 'data_channels') or not any(
+            ch.readyState == "open" for ch in self.network.data_channels.values()
+        ):
+            print("⏳ Waiting for data channels to be ready...")
+            return
         # Get the current mouse position
         current_pos = pygame.mouse.get_pos()
     
@@ -1303,16 +1314,21 @@ while running:
                             game_instance = DrawingGame(room=room_input)
                             game_instance.network.room_id = room_input
                             canvas = game_instance.canvas
-        
-                            # Wait briefly for network initialization
-                            time.sleep(0.5)  
-        
-                            status_message = f"Creating room as {user_data['name']}..."
+
+                            # รอจนกว่า channel จะพร้อม (เพิ่ม timeout)
+                            start_time = time.time()
+                            while not hasattr(game_instance.network, 'data_channels') or not game_instance.network.is_channel_ready():
+                                if time.time() - start_time > 5:  # timeout 5 วินาที
+                                    raise TimeoutError("Data channel not ready after 5 seconds")
+                                pygame.time.wait(100)  # รอ 100ms
+
+                            status_message = f"Room created! Drawing as {user_data['name']}"
                             status_timer = 60
                             game_state = start_new_round()
+        
                         except Exception as e:
                             print(f"Error initializing game: {e}")
-                            status_message = "Failed to create room!"
+                            status_message = f"Failed to create room: {str(e)}"
                             status_timer = 60
                         
                     elif join_room_button.collidepoint(event.pos):
