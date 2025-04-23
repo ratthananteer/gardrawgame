@@ -656,7 +656,7 @@ def start_new_round():
     game_session["round_end_time"] = game_session["round_start_time"] + (game_session["round_duration"] * 1000)
     
     if game_instance:
-        if user_data["role"] == "drawer":
+        if user_data["role"] == "drawer" and game_instance.network.is_channel_ready():
             game_instance.network.broadcast_start_timer(game_session["round_duration"])
         try:
             asyncio.run_coroutine_threadsafe(
@@ -1078,9 +1078,16 @@ class DrawingGameNetwork:
             "time": seconds
         }
         for target_id, channel in self.data_channels.items():
-            if channel.readyState == "open":
-                channel.send(json.dumps(message))
-
+            try:
+                if channel.readyState == "open":
+                    channel.send(json.dumps(message))
+            except Exception as e:
+                print(f"❌ Failed to send timer to {target_id}: {e}")
+    def is_channel_ready(self):
+        return any(
+            channel.readyState == "open"
+            for channel in self.data_channels.values()
+    )
 
 
 '''#####################################################################################'''
