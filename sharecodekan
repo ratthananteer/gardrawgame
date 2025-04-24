@@ -1100,7 +1100,7 @@ class DrawingGameNetwork:
                     channel.send(json.dumps(message))
             except Exception as e:
                 print(f"❌ Failed to send timer to {target_id}: {e}")
-    def is_channel_ready(self):
+    def is_channel_ready(self, target_id):
         return self.channel_ready_map.get(target_id, False)
     
     def send_test_ping(self):
