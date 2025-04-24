@@ -828,6 +828,14 @@ class DrawingGameNetwork:
                     
                 elif data["type"] == "draw-data":
                     self.handle_remote_draw(data["data"])
+                elif data["type"] == "room_joined":
+                    self.room_id = data["room_id"]
+                    self.room_members = data["members"]
+                    print(f"✅ Joined room {self.room_id} with members: {self.room_members}")
+                    for member in self.room_members:
+                        if member != self.player_id:
+                            await self.initialize_p2p(member)
+
 
                     
         except websockets.exceptions.ConnectionClosed:
@@ -901,7 +909,7 @@ class DrawingGameNetwork:
 
         @channel.on("open")
         def on_open():
-            print(f"Data channel opened with {target_id}")
+            print(f"Data channel opened with {target_id} is open and ready.")
             self.channel_ready_map[target_id] = True
             
         @channel.on("message")
@@ -950,7 +958,7 @@ class DrawingGameNetwork:
 
             @channel.on("open")
             def on_open():
-                print(f"✅ Data channel with {data['sender_id']} is open and ready.")
+                print(f" Data channel with {data['sender_id']} is open and ready.")
                 self.channel_ready_map[data["sender_id"]] = True
             
             @channel.on("message")
@@ -1208,65 +1216,12 @@ class DrawingGame:
             loop.close()
         
     def handle_drawing_event(self, event):
-        # Get the current mouse position
-        current_pos = pygame.mouse.get_pos()
-    
-        # If we're just starting to draw
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            self.drawing = True
-            self.last_pos = current_pos
-        
-            # Create a draw start point
-            draw_data = {
-                "type": "draw_start",
-                "pos": current_pos,
-                "color": self.current_color,
-                "brush_size": self.brush_size,
-                "sender_id": self.network.player_id,
-                "room_id": self.network.room_id
-            }
-            if self.network.data_channels:
-                for ch in self.network.data_channels.values():
-                    if ch.readyState != "open":
-                        print("⏳ Waiting for data channel to open...")
-                        return  # ยังไม่พร้อมก็ไม่ส่ง
-
-            # วาดได้ ถ้า "มีอย่างน้อย 1" data channel พร้อม
-            if not self.network.is_channel_ready():
-                print("⏳ Data channel not ready, skipping drawing.")
-                return
-
-            self.network.send_drawing_data(draw_data)
-    
-        # If we're dragging to draw
-        elif event.type == pygame.MOUSEMOTION and self.drawing:
-            if self.last_pos:
-                
-                pygame.draw.line(self.canvas, self.current_color,
-                           self.last_pos, current_pos,
-                           self.brush_size)
-            
-                #  Send drawing data to network
-                draw_data = {
-                    "type": "draw",
-                    "start_pos": self.last_pos,
-                    "end_pos": current_pos,
-                    "color": self.current_color,
-                    "brush_size": self.brush_size,
-                     "sender_id": self.network.player_id,
-                    "room_id": self.network.room_id
-                }
-                if not self.network.is_channel_ready:
-                    print("⏳ Data channel not ready yet")
+        if self.network:
+            for target_id in self.network.data_channels:
+                if not self.network.is_channel_ready(target_id):
+                    print(f"⏳ Channel to {target_id} not ready. Skipping draw.")
                     return
-            self.network.send_drawing_data(draw_data)
-        
-            self.last_pos = current_pos
-    
-        # If we stop drawing
-        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-            self.drawing = False
-            self.last_pos = None
+
     def start_countdown(self, duration):
         self.countdown_time = duration
         self.countdown_running = True
