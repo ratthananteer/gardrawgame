@@ -844,38 +844,35 @@ class DrawingGameNetwork:
                 "type": "join_room",
                 "room_id": room_id,
                 "player_id": self.player_id,
-                "player_name": user_data.get("name", "Anonymous"),  # เพิ่มชื่อผู้เล่น
-                "timestamp": int(time.time())  # เพิ่ม timestamp
+                "player_name": user_data.get("name", "Anonymous"), 
+                "timestamp": int(time.time())  
             }
         
             await self.websocket.send(json.dumps(join_message))
             print(f"Sent join request for room: {room_id}")
         
             # รอการยืนยันจากเซิร์ฟเวอร์
-            response = await asyncio.wait_for(
-                self.websocket.recv(),
-                timeout=5.0
-            )
-            response_data = json.loads(response)
+            return True
+        #     response_data = json.loads(response)
         
-            if response_data.get("type") == "room_joined":
-                self.room_id = room_id
-                self.room_members = response_data.get("members", [])
-                print(f"Successfully joined room {room_id} with members: {self.room_members}")
+        #     if response_data.get("type") == "room_joined":
+        #         self.room_id = room_id
+        #         self.room_members = response_data.get("members", [])
+        #         print(f"Successfully joined room {room_id} with members: {self.room_members}")
             
-                # เริ่มการเชื่อมต่อ P2P กับสมาชิกอื่นในห้อง
-                for member in self.room_members:
-                    if member != self.player_id:
-                        await self.initialize_p2p(member)
+        #         # เริ่มการเชื่อมต่อ P2P กับสมาชิกอื่นในห้อง
+        #         for member in self.room_members:
+        #             if member != self.player_id:
+        #                 await self.initialize_p2p(member)
             
-                return True
-            else:
-                print(f"Failed to join room: {response_data.get('error', 'Unknown error')}")
-                return False
+        #         return True
+        #     else:
+        #         print(f"Failed to join room: {response_data.get('error', 'Unknown error')}")
+        #         return False
             
-        except asyncio.TimeoutError:
-            print("Timeout while waiting for room join confirmation")
-            return False
+        # except asyncio.TimeoutError:
+        #     print("Timeout while waiting for room join confirmation")
+        #     return False
         except Exception as e:
             print(f"Error joining room: {str(e)}")
             return False
@@ -946,7 +943,6 @@ class DrawingGameNetwork:
                 }))
         @pc.on("datachannel")
         def on_datachannel(channel):
-
             self.data_channels[data["sender_id"]] = channel
             print(f"Data channel received from {data['sender_id']}")
             
