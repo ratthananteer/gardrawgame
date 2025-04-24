@@ -954,13 +954,15 @@ class DrawingGameNetwork:
         def on_datachannel(channel):
             self.data_channels[data["sender_id"]] = channel
             print(f"Data channel received from {data['sender_id']}")
-            
-
 
             @channel.on("open")
             def on_open():
-                print(f" Data channel with {data['sender_id']} is open and ready.")
-                self.channel_ready_map[data["sender_id"]] = True
+                try:
+                    print(f"✅ Data channel with {data['sender_id']} is open and ready.")
+                    self.channel_ready_map[data["sender_id"]] = True
+                except Exception as e:
+                    print(f"❌ Error in on_open: {e}")
+
             
             @channel.on("message")
             def on_message(msg):
