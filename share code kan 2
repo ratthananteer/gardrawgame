@@ -1,22 +1,16 @@
-PS C:\Users\User\Downloads\gardrawgame-main\gardrawgame-main> python gardraw15.py
-pygame 2.6.1 (SDL 2.28.4, Python 3.11.9)
-Hello from the pygame community. https://www.pygame.org/contribute.html
-พยายามเข้าร่วมห้อง: UNMMC
+พยายามเข้าร่วมห้อง: VZJ1Z
 Connecting with Origin: https://localhost
-WebSocket URL: wss://192.168.2.69:8000/ws/ko
+WebSocket URL: wss://192.168.2.69:8000/ws/AS
 Headers: {'Origin': 'https://localhost', 'User-Agent': 'DrawingGame/1.0'}
-Player ID: ko
-Room ID: UNMMC
+Player ID: AS
+Room ID: VZJ1Z
 Successfully connected to 
-Sent join request for room: UNMMC
-Error joining room: cannot call recv while another coroutine is already waiting for the next message       
-Joined room UNMMC with members: ['aok', 'ko']
-[initialize_p2p] Creating offer for aok
+Sent join request for room: VZJ1Z
+Joined room VZJ1Z with members: ['da', 'AS']
+[initialize_p2p] Creating offer for da
 6
 6
-Data channel opened with aok
-6
-6
+Data channel opened with da is open and ready.
 6
 6
 6
@@ -25,4 +19,8 @@ Data channel opened with aok
 6
 6
 6
-Member left: aok
+6
+6
+6
+6
+6
