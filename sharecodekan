@@ -892,8 +892,9 @@ class DrawingGameNetwork:
 
         @pc.on("icecandidate")
         async def on_icecandidate(event):
-            print(f"[ICE] Sending ICE candidate to {target_id}")
+            
             if event.candidate:
+                print(f"[ICE] Sending ICE candidate to {target_id}")
                 await self.websocket.send(json.dumps({
                     "type": "ice-candidate",
                     "sender_id": self.player_id,
@@ -963,8 +964,7 @@ class DrawingGameNetwork:
             
             @channel.on("message")
             def on_message(msg):
-                try: 
-                    
+                try:                  
                     data = json.loads(msg)
                     print(f"[MSG] Received message: {msg}")
                     if data["type"] == "start_timer":
@@ -975,8 +975,8 @@ class DrawingGameNetwork:
                             game_session["current_drawer"] = data["drawer"] 
 
                     elif data["type"] in ["draw", "draw-data"]: #"draw_start"
-                        print(f"Received drawing data: {data}")
                         draw_data = data.get("data", data)  # รองรับทั้ง draw และ draw-data
+                        print(f"🖌️ [RENDER] draw_data received: {draw_data}")
                         self.handle_remote_draw(draw_data)
                     
                     elif data["type"] == "ping":
@@ -1024,17 +1024,16 @@ class DrawingGameNetwork:
         print(f"[DRAW] Sending drawing data: {draw_data}")
         if not hasattr(self, 'data_channels') or not self.is_channel_ready():
             print("⏳ Cannot send drawing data: Channel not ready")
-            return
-        
+            return     
         for target_id, channel in self.data_channels.items():
-            if self.is_channel_ready(target_id):
-                channel.send(json.dumps({
-                "type": "draw",
+            if not self.is_channel_ready(target_id):
+                print(f"⏳ Channel to {target_id} not ready — skipping draw.")
+                continue
+            print(f"📤 [SEND] Sending draw to {target_id}: {draw_data}")
+            channel.send(json.dumps({
+                "type": "draw-data",
                 "data": draw_data
-                }))
-            else:
-                print(f"❌ Channel not ready to {target_id}")
-    
+            }))
     def handle_remote_draw(self, data):
         """Handle drawing data received from other players"""
         print(f"[DRAW] Handling drawing data: {data}")
