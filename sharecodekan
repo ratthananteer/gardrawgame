@@ -746,7 +746,7 @@ def all_players_guessed():
 # oak code
 class DrawingGameNetwork:
     def __init__(self, player_id, room_id="default_room"):
-        self.channel_ready = False
+        self.channel_ready_map = {} 
         self.player_id = player_id
         self.room_id = room_id
         self.websocket = None
@@ -823,13 +823,12 @@ class DrawingGameNetwork:
                     await self.handle_answer(data)
                     
                 elif data["type"] == "ice-candidate":
+                    print(f"[ICE] Received ICE candidate from {data['sender_id']}")
                     await self.handle_ice_candidate(data)
                     
                 elif data["type"] == "draw-data":
                     self.handle_remote_draw(data["data"])
 
-                elif data["type"] == "ice-candidate":
-                    await self.handle_ice_candidate(data)
                     
         except websockets.exceptions.ConnectionClosed:
             print("Connection to server closed")
@@ -884,8 +883,11 @@ class DrawingGameNetwork:
     async def initialize_p2p(self, target_id):
         pc = RTCPeerConnection()
         self.peer_connections[target_id] = pc
+        print(f"[initialize_p2p] Creating offer for {target_id}")
+
         @pc.on("icecandidate")
         async def on_icecandidate(event):
+            print(f"[ICE] Sending ICE candidate to {target_id}")
             if event.candidate:
                 await self.websocket.send(json.dumps({
                     "type": "ice-candidate",
@@ -898,14 +900,16 @@ class DrawingGameNetwork:
                     }
                 }))
         channel = pc.createDataChannel("drawing")
+        self.data_channels[target_id] = channel
+
         @channel.on("open")
         def on_open():
             print(f"Data channel opened with {target_id}")
-            self.data_channels[target_id] = channel
-            self.channel_ready = True
+            self.channel_ready_map[target_id] = True
             
         @channel.on("message")
         def on_message(msg):
+            print(f"[MSG] Received message from {target_id}: {msg}")
             data = json.loads(msg)
             if data["type"] in ["draw", "draw-data", "draw_start"]:
                 draw_data = data.get("data", data)
@@ -922,15 +926,32 @@ class DrawingGameNetwork:
             "room_id": self.room_id
         }))
         
-    async def handle_offer(self, data):
+    async def handle_offer(self, data):    
         pc = RTCPeerConnection()
         self.peer_connections[data["sender_id"]] = pc
-        
+        print(f"[handle_offer] Offer received from {data['sender_id']}")
+
         @pc.on("datachannel")
         def on_datachannel(channel):
 
             self.data_channels[data["sender_id"]] = channel
             print(f"Data channel received from {data['sender_id']}")
+            
+            @pc.on("icecandidate")
+            async def on_icecandidate(event):
+                if event.candidate:
+                    print(f"[ICE] Sending ICE candidate to {data['sender_id']}")
+                    await self.websocket.send(json.dumps({
+                        "type": "ice-candidate",
+                        "sender_id": self.player_id,
+                        "target_id": data["sender_id"],
+                        "candidate": {
+                        "candidate": event.candidate.candidate,
+                        "sdpMid": event.candidate.sdpMid,
+                        "sdpMLineIndex": event.candidate.sdpMLineIndex,
+                }
+                }))
+
 
             @channel.on("open")
             def on_open():
@@ -940,6 +961,7 @@ class DrawingGameNetwork:
             @channel.on("message")
             def on_message(msg):
                 try: 
+                    
                     data = json.loads(msg)
 
                     if data["type"] == "start_timer":
@@ -986,15 +1008,13 @@ class DrawingGameNetwork:
         
     async def handle_ice_candidate(self, data):
         pc = self.peer_connections.get(data["sender_id"])
-        if not pc:
-            print("PeerConnection not found for ICE candidate")
-            return
-        candidate = RTCIceCandidate(
+        if pc and data["candidate"]:
+            candidate = RTCIceCandidate(
             sdpMid=data["candidate"]["sdpMid"],
             sdpMLineIndex=data["candidate"]["sdpMLineIndex"],
             candidate=data["candidate"]["candidate"]
         )
-        await pc.addIceCandidate(candidate)
+            await pc.addIceCandidate(candidate)
 
         
     def send_drawing_data(self, draw_data):
@@ -1081,10 +1101,8 @@ class DrawingGameNetwork:
             except Exception as e:
                 print(f"❌ Failed to send timer to {target_id}: {e}")
     def is_channel_ready(self):
-        return any(
-            channel.readyState == "open"
-            for channel in self.data_channels.values()
-    )
+        return self.channel_ready_map.get(target_id, False)
+    
     def send_test_ping(self):
         message = {
         "type": "ping"
