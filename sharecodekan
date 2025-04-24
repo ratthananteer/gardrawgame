@@ -907,8 +907,9 @@ class DrawingGameNetwork:
         @channel.on("message")
         def on_message(msg):
             data = json.loads(msg)
-            if data["type"] in ["draw", "draw_start"]:
-                self.handle_remote_draw(data)
+            if data["type"] in ["draw", "draw-data", "draw_start"]:
+                draw_data = data.get("data", data)
+                self.handle_remote_draw(draw_data)
         
         offer = await pc.createOffer()
         await pc.setLocalDescription(offer)
@@ -1044,24 +1045,24 @@ class DrawingGameNetwork:
                 except:
                     print("Connection lost, attempting to reconnect...")
                     await self.connect_to_server()
-    async def join_room(self, room_id):
-        """เข้าร่วมห้องเกม"""
-        if not self.websocket or self.websocket.closed:
-            print("WebSocket connection is not established")
-            return False
+    # async def join_room(self, room_id):
+    #     """เข้าร่วมห้องเกม"""
+    #     if not self.websocket or self.websocket.closed:
+    #         print("WebSocket connection is not established")
+    #         return False
 
-        try:
-            await self.websocket.send(json.dumps({
-                "type": "join_room",
-                "room_id": room_id,
-                "player_id": self.player_id,
-                "player_name": user_data["name"] if "name" in user_data else "Anonymous"
-            }))
-            print(f"Sent join request for room: {room_id}")
-            return True
-        except Exception as e:
-            print(f"Error joining room: {str(e)}")
-            return False
+    #     try:
+    #         await self.websocket.send(json.dumps({
+    #             "type": "join_room",
+    #             "room_id": room_id,
+    #             "player_id": self.player_id,
+    #             "player_name": user_data["name"] if "name" in user_data else "Anonymous"
+    #         }))
+    #         print(f"Sent join request for room: {room_id}")
+    #         return True
+    #     except Exception as e:
+    #         print(f"Error joining room: {str(e)}")
+    #         return False
         
     def set_timer_callback(self, callback):
         self.timer_callback = callback
