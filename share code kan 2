@@ -1,25 +1,19 @@
-พยายามเข้าร่วมห้อง: VZJ1Z
+PS C:\Users\User\Downloads\gardrawgame-main\gardrawgame-main> python gardraw15.py
+pygame 2.6.1 (SDL 2.28.4, Python 3.11.9)
+Hello from the pygame community. https://www.pygame.org/contribute.html
+พยายามเข้าร่วมห้อง: 0AUDN
 Connecting with Origin: https://localhost
-WebSocket URL: wss://192.168.2.69:8000/ws/AS
+WebSocket URL: wss://192.168.2.69:8000/ws/KO
 Headers: {'Origin': 'https://localhost', 'User-Agent': 'DrawingGame/1.0'}
-Player ID: AS
-Room ID: VZJ1Z
+Player ID: KO
+Room ID: 0AUDN
 Successfully connected to 
-Sent join request for room: VZJ1Z
-Joined room VZJ1Z with members: ['da', 'AS']
-[initialize_p2p] Creating offer for da
+Sent join request for room: 0AUDN
+Joined room 0AUDN with members: ['sf', 'KO']
+[initialize_p2p] Creating offer for sf
 6
 6
-Data channel opened with da is open and ready.
-6
-6
-6
-6
-6
-6
-6
-6
-6
+Data channel opened with sf is open and ready.
 6
 6
 6
