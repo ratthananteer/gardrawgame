@@ -1,20 +1,32 @@
-PS C:\Users\User\Downloads\gardrawgame-main\gardrawgame-main> python gardraw15.py
+C:\Users\User\Downloads\gardrawgame-main\gardrawgame-main>python gardraw15.py
 pygame 2.6.1 (SDL 2.28.4, Python 3.11.9)
 Hello from the pygame community. https://www.pygame.org/contribute.html
-พยายามเข้าร่วมห้อง: 0AUDN
+พยายามเข้าร่วมห้อง: 3UIAP
 Connecting with Origin: https://localhost
-WebSocket URL: wss://192.168.2.69:8000/ws/KO
+WebSocket URL: wss://192.168.2.69:8000/ws/po
 Headers: {'Origin': 'https://localhost', 'User-Agent': 'DrawingGame/1.0'}
-Player ID: KO
-Room ID: 0AUDN
+Player ID: po
+Room ID: 3UIAP
 Successfully connected to 
-Sent join request for room: 0AUDN
-Joined room 0AUDN with members: ['sf', 'KO']
-[initialize_p2p] Creating offer for sf
+Sent join request for room: 3UIAP
+Joined room 3UIAP with members: ['osk', 'po']
+initialize_listenserver
+[initialize_p2p] Creating offer for osk
 6
 6
-Data channel opened with sf is open and ready.
+Data channel opened with osk is open and ready. this is initialize_p2p
 6
 6
 6
 6
+6
+6
+Member left: osk
+Traceback (most recent call last):
+  File "C:\Users\User\Downloads\gardrawgame-main\gardrawgame-main\gardraw15.py", line 1678, in <module>
+    draw_scoreboard()
+  File "C:\Users\User\Downloads\gardrawgame-main\gardrawgame-main\gardraw15.py", line 307, in draw_scoreboard
+    def draw_scoreboard():
+
+KeyboardInterrupt
+^C
