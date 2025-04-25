@@ -837,10 +837,7 @@ class DrawingGameNetwork:
                     for member in self.room_members:
                         if member != self.player_id:
                             print("initialize_listenserver2")
-                            await self.initialize_p2p(member)
-
-
-                    
+                            await self.initialize_p2p(member)                   
         except websockets.exceptions.ConnectionClosed:
             print("Connection to server closed")
             
@@ -970,7 +967,8 @@ class DrawingGameNetwork:
         await pc.setRemoteDescription(
             RTCSessionDescription(sdp=data["offer"]["sdp"], type=data["offer"]["type"])
         )
-        # รอ channel สักพักถ้ายังไม่มา
+        await asyncio.sleep(0.1) 
+        
         import asyncio
         count = 0
         for _ in range(20):  # ลอง 20 ครั้ง (2 วินาที)
@@ -1138,7 +1136,6 @@ class DrawingGame:
         self.countdown_time = 0
         self.countdown_running = False
         self.last_tick = 0
-        
     # Network setup
         self.network = DrawingGameNetwork(
             player_id=user_data.get("name") or str(uuid.uuid4()),
@@ -1153,7 +1150,6 @@ class DrawingGame:
     def run(self):
         import pygame
         clock = pygame.time.Clock()
-
         while self.running:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
