@@ -1201,28 +1201,30 @@ class DrawingGame:
             loop.close()
         
     def handle_drawing_event(self, event):
-        if self.network and event.type == pygame.MOUSEMOTION and event.buttons[0]:
-            pos = pygame.mouse.get_pos()
-            draw_data = {
-            "type": "draw",
-            "start_pos": self.last_pos,
-            "end_pos": pos,
-            "color": self.brush_color,
-            "brush_size": self.brush_size,
-            "sender_id": self.player_id,
-            "room_id": self.room_id
-        }
-            self.last_pos = pos  # อัปเดตตำแหน่งล่าสุด
+        if not self.network:
+            print("❌ No network connection to send drawing data.")
+            return
 
-            for target_id in self.network.data_channels:
-                if self.network.is_channel_ready(target_id):
-                    print(f"[DRAW] Sending to {target_id}")
-                    self.network.data_channels[target_id].send(json.dumps({
-                    "type": "draw-data",
-                    "data": draw_data
-                    }))
-                else:
-                    print(f"⏳ Channel to {target_id} not ready. Skipping.")
+        for target_id in self.network.data_channels:
+            if not self.network.is_channel_ready(target_id):
+                print(f"⏳ Channel to {target_id} not ready. Skipping draw.")
+                continue
+
+            if event.type == pygame.MOUSEMOTION and event.buttons[0]:
+                draw_data = {
+                "type": "draw",
+                "start_pos": self.last_draw_pos if self.last_draw_pos else event.pos,
+                "end_pos": event.pos,
+                "color": self.active_color,
+                "brush_size": self.active_brushsize,
+                "sender_id": self.network.player_id,
+                "room_id": self.network.room_id
+                }
+
+                print(f"[DRAW] Sending drawing data: {draw_data}")
+                self.network.send_draw_data(draw_data, target_id)
+                self.last_draw_pos = event.pos  # เก็บตำแหน่งล่าสุดไว้
+
 
     def start_countdown(self, duration):
         self.countdown_time = duration
@@ -1400,8 +1402,7 @@ while running:
                 if user_data["name"] not in scores:
                     scores[user_data["name"]] = 0
 
-        elif game_state == DRAWING:
-            
+        elif game_state == DRAWING:          
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
                     # Check UI elements first
