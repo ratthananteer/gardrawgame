@@ -970,6 +970,13 @@ class DrawingGameNetwork:
         await pc.setRemoteDescription(
             RTCSessionDescription(sdp=data["offer"]["sdp"], type=data["offer"]["type"])
         )
+        # รอ channel สักพักถ้ายังไม่มา
+        
+        for _ in range(20):  # ลอง 20 ครั้ง (2 วินาที)
+            if incoming_channel:
+                break
+            await asyncio.sleep(0.1)
+
         if incoming_channel:
             @incoming_channel.on("open")
             def on_open():
