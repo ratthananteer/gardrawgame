@@ -1,85 +1,16 @@
 C:\Users\User\Downloads\gardrawgame-main\gardrawgame-main>python gardraw15.py
 pygame 2.6.1 (SDL 2.28.4, Python 3.11.9)
 Hello from the pygame community. https://www.pygame.org/contribute.html
-สร้างห้องสำเร็จ Room ID: FL9L1
+พยายามเข้าร่วมห้อง: 0MC9S
 Connecting with Origin: https://localhost
-WebSocket URL: wss://192.168.2.69:8000/ws/ASK
+WebSocket URL: wss://192.168.2.69:8000/ws/WE
 Headers: {'Origin': 'https://localhost', 'User-Agent': 'DrawingGame/1.0'}
-Player ID: ASK
-Room ID: FL9L1
+Player ID: WE
+Room ID: 0MC9S
 Successfully connected to 
-Sent join request for room: FL9L1
-Joined room FL9L1 with members: ['ASK']
-New member joined: qko
-[handle_offer] Offer received from qko
-6
-6
-6
-Data channel received from qko
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-6
-6
-6
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-⏳ Channel to qko not ready. Skipping draw.
-6
-6
-6
-6
-6
-6
-6
-6
-6
-6
-6
-6
-6
-6
-6
-6
-6
-6
+Sent join request for room: 0MC9S
+Joined room 0MC9S with members: ['oak', 'WE']
+initialize_listenserver
+[initialize_p2p] Creating offer for oak
+Data channel opened with oak is open and ready. this is initialize_p2p
+Member left: oak
