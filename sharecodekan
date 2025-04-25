@@ -942,6 +942,7 @@ class DrawingGameNetwork:
                 try:
                     print(f" Data channel with {data['sender_id']} is open and ready. this is hand_offer")
                     self.channel_ready_map[data["sender_id"]] = True
+                    print(f"✅ Channel map updated: {self.channel_ready_map}")
                 except Exception as e:
                     print(f" Error in on_open: {e}")
 
@@ -1006,31 +1007,33 @@ class DrawingGameNetwork:
 
         
     def send_drawing_data(self, draw_data):
-        print(f"[DRAW] Sending drawing data: {draw_data}")
-        if not hasattr(self, 'data_channels') or not self.is_channel_ready():
-            print(" Cannot send drawing data: Channel not ready")
-            return     
+        print(f"[DRAW] Sending drawing data: {draw_data}")         
         for target_id, channel in self.data_channels.items():
             if not self.is_channel_ready(target_id):
                 print(f" Channel to {target_id} not ready — skipping draw.")
                 continue
-            print(f" [SEND] Sending draw to {target_id}: {draw_data}")
-            channel.send(json.dumps({
-                "type": "draw-data",
-                "data": draw_data
+            try:
+                print(f"[SEND] Sending draw to {target_id}: {draw_data} this is send_drawing_data")
+                channel.send(json.dumps({
+                    "type": "draw-data",
+                    "data": draw_data
             }))
+            except Exception as e:
+                print(f"❌ Failed to send drawing to {target_id}: {e}")
     def handle_remote_draw(self, data):
-        """Handle drawing data received from other players"""
         print(f"[DRAW] Handling drawing data: {data}")
         try:
-            x1, y1 = data.get("x1"), data.get("y1")
-            x2, y2 = data.get("x2"), data.get("y2")
+            start = data.get("start_pos")
+            end = data.get("end_pos")
             color = tuple(data.get("color", (0, 0, 0)))
-            width = data.get("width", 3)
+            width = data.get("brush_size", 3)
 
-            pygame.draw.line(canvas, color, (x1, y1), (x2, y2), width)
+            if start and end:
+                pygame.draw.line(canvas, color, start, end, width)
+            else:
+                print("⚠️ Incomplete draw data received.")
         except Exception as e:
-            print(f" Error drawing: {e}")
+            print(f"❌ Error drawing: {e}")
 
     async def sync_timer(self, duration):
         if self.websocket:
