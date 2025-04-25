@@ -759,6 +759,7 @@ class DrawingGameNetwork:
 
     def set_canvas(self, canvas):
         self.canvas = canvas   
+
     async def connect_to_server(self):
         try:
             ssl_context = ssl.create_default_context()
@@ -806,6 +807,7 @@ class DrawingGameNetwork:
                     print(f"Joined room {self.room_id} with members: {self.room_members}")
                     for member in self.room_members:
                         if member != self.player_id:
+                            print("initialize_listenserver")
                             await self.initialize_p2p(member)
                 
                 elif data["type"] == "new_member":
@@ -834,6 +836,7 @@ class DrawingGameNetwork:
                     print(f"✅ Joined room {self.room_id} with members: {self.room_members}")
                     for member in self.room_members:
                         if member != self.player_id:
+                            print("initialize_listenserver2")
                             await self.initialize_p2p(member)
 
 
@@ -933,6 +936,7 @@ class DrawingGameNetwork:
         }))
         
     async def handle_offer(self, data):    
+        from aiortc import RTCPeerConnection, RTCSessionDescription
         pc = RTCPeerConnection()
         self.peer_connections[data["sender_id"]] = pc
         print(f"[handle_offer] Offer received from {data['sender_id']}")
