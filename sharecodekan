@@ -916,6 +916,7 @@ class DrawingGameNetwork:
         pc = RTCPeerConnection()
         self.peer_connections[data["sender_id"]] = pc
         print(f"[handle_offer] Offer received from {data['sender_id']}")
+        incoming_channel = None
 
         @pc.on("icecandidate")
         async def on_icecandidate(event):
@@ -934,19 +935,11 @@ class DrawingGameNetwork:
 
         @pc.on("datachannel")
         def on_datachannel(channel):
-            self.data_channels[data["sender_id"]] = channel
+            nonlocal incoming_channel
             print(f"Data channel received from {data['sender_id']}")
-
-            @channel.on("open")
-            def on_open():
-                try:
-                    print(f" Data channel with {data['sender_id']} is open and ready. this is hand_offer")
-                    self.channel_ready_map[data["sender_id"]] = True
-                    print(f"✅ Channel map updated: {self.channel_ready_map}")
-                except Exception as e:
-                    print(f" Error in on_open: {e}")
-
-            
+            self.data_channels[data["sender_id"]] = channel
+            incoming_channel = channel
+        
             @channel.on("message")
             def on_message(msg):
                 try:
@@ -977,6 +970,16 @@ class DrawingGameNetwork:
         await pc.setRemoteDescription(
             RTCSessionDescription(sdp=data["offer"]["sdp"], type=data["offer"]["type"])
         )
+        if incoming_channel:
+            @incoming_channel.on("open")
+            def on_open():
+                try:
+                    print(f"✅ Data channel with {data['sender_id']} is open and ready. (handle_offer)")
+                    self.channel_ready_map[data["sender_id"]] = True
+                    print(f"✅ Channel map updated: {self.channel_ready_map}")
+                except Exception as e:
+                    print(f"❌ Error in on_open: {e}")
+
         
         answer = await pc.createAnswer()
         await pc.setLocalDescription(answer)
