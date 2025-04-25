@@ -1,16 +1,28 @@
 C:\Users\User\Downloads\gardrawgame-main\gardrawgame-main>python gardraw15.py
 pygame 2.6.1 (SDL 2.28.4, Python 3.11.9)
 Hello from the pygame community. https://www.pygame.org/contribute.html
-พยายามเข้าร่วมห้อง: 0MC9S
+พยายามเข้าร่วมห้อง: M7PE3
 Connecting with Origin: https://localhost
-WebSocket URL: wss://192.168.2.69:8000/ws/WE
+WebSocket URL: wss://192.168.2.69:8000/ws/AS
 Headers: {'Origin': 'https://localhost', 'User-Agent': 'DrawingGame/1.0'}
-Player ID: WE
-Room ID: 0MC9S
+Player ID: AS
+Room ID: M7PE3
 Successfully connected to 
-Sent join request for room: 0MC9S
-Joined room 0MC9S with members: ['oak', 'WE']
+Sent join request for room: M7PE3
+Joined room M7PE3 with members: ['oak', 'AS']
 initialize_listenserver
 [initialize_p2p] Creating offer for oak
+6
+6
 Data channel opened with oak is open and ready. this is initialize_p2p
-Member left: oak
+6
+6
+6
+6
+6
+Traceback (most recent call last):
+  File "C:\Users\User\Downloads\gardrawgame-main\gardrawgame-main\gardraw15.py", line 1686, in <module>
+    screen.blit(canvas, (0, 0))
+KeyboardInterrupt
+^C
+C:\Users\User\Downloads\gardrawgame-main\gardrawgame-main>
