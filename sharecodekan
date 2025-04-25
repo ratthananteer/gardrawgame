@@ -912,7 +912,7 @@ class DrawingGameNetwork:
         }))
         
     async def handle_offer(self, data):    
-        from aiortc import RTCPeerConnection, RTCSessionDescription
+        from aiortc import RTCPeerConnection, RTCSessionDescription, RTCIceCandidate
         pc = RTCPeerConnection()
         self.peer_connections[data["sender_id"]] = pc
         print(f"[handle_offer] Offer received from {data['sender_id']}")
@@ -971,10 +971,13 @@ class DrawingGameNetwork:
             RTCSessionDescription(sdp=data["offer"]["sdp"], type=data["offer"]["type"])
         )
         # รอ channel สักพักถ้ายังไม่มา
-        
+        import asyncio
+        count = 0
         for _ in range(20):  # ลอง 20 ครั้ง (2 วินาที)
             if incoming_channel:
                 break
+            count = count + 1
+            print(count)
             await asyncio.sleep(0.1)
 
         if incoming_channel:
