@@ -910,7 +910,7 @@ class DrawingGameNetwork:
 
         @channel.on("open")
         def on_open():
-            print(f"Data channel opened with {target_id} is open and ready.")
+            print(f"Data channel opened with {target_id} is open and ready. this is initialize_p2p")
             self.channel_ready_map[target_id] = True
             
         @channel.on("message")
@@ -958,7 +958,7 @@ class DrawingGameNetwork:
             @channel.on("open")
             def on_open():
                 try:
-                    print(f"✅ Data channel with {data['sender_id']} is open and ready.")
+                    print(f"✅ Data channel with {data['sender_id']} is open and ready. this is hand_offer")
                     self.channel_ready_map[data["sender_id"]] = True
                 except Exception as e:
                     print(f"❌ Error in on_open: {e}")
