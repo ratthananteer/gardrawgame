@@ -2,13 +2,18 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, List, Optional
-import uuid
 import json
 import logging
 import ssl
 
 # ตั้งค่า logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.StreamHandler()
+    ]
+)
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
@@ -32,8 +37,7 @@ class ConnectionManager:
         self.rooms: Dict[str, Dict[str, WebSocket]] = {}  # {room_id: {client_id: websocket}}
         self.client_rooms: Dict[str, str] = {}  # {client_id: room_id}
 
-    async def connect(self, websocket: WebSocket, client_id: str):
-        
+    async def connect(self, websocket: WebSocket, client_id: str):    
         self.active_connections[client_id] = websocket
         logger.info(f"Client {client_id} connected")
 
@@ -48,31 +52,28 @@ class ConnectionManager:
             self.rooms[room_id] = {}
         
         self.rooms[room_id][client_id] = self.active_connections[client_id]
-        self.client_rooms[client_id] = room_id
-        
+        self.client_rooms[client_id] = room_id     
         logger.info(f"Client {client_id} joined room {room_id}")
         return room_id
 
     async def leave_room(self, client_id: str):
         """นำผู้เล่นออกจากห้อง"""
         if client_id not in self.client_rooms:
-            return None
-            
+            return None        
         room_id = self.client_rooms[client_id]
         if room_id in self.rooms and client_id in self.rooms[room_id]:
             del self.rooms[room_id][client_id]
-            del self.client_rooms[client_id]
-            
+            del self.client_rooms[client_id]      
             # ถ้าห้องว่างให้ลบห้อง
             if not self.rooms[room_id]:
                 del self.rooms[room_id]
-                logger.info(f"Room {room_id} is now empty and removed")
-            
+                logger.info(f"Room {room_id} is now empty and removed")        
             return room_id
         return None
 
     async def broadcast_to_room(self, message: str, room_id: str, exclude_client_id: Optional[str] = None):
         """ส่งข้อความถึงทุกคนในห้อง"""
+        logger.debug(f"Broadcasting to room {room_id} (excluding {exclude_client_id}): {message}")
         if room_id in self.rooms:
             for client_id, connection in self.rooms[room_id].items():
                 if client_id != exclude_client_id:
@@ -85,8 +86,7 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 @app.websocket("/ws/{client_id}")
-async def websocket_endpoint(websocket: WebSocket, client_id: str): 
-    
+async def websocket_endpoint(websocket: WebSocket, client_id: str):  
     origin = websocket.headers.get("origin")
     print(f"[Server] Received origin from client: {origin}") 
     await websocket.accept() 
@@ -103,7 +103,6 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
     "https://192.168.2.69",
     None
 ]
-    
    
     if origin not in allowed_origins:
         print(f"Rejected connection from: {origin}")
@@ -144,6 +143,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                     
                 elif message["type"] in ["offer", "answer", "ice-candidate"]:
                     target_id = message["target_id"]
+                    logger.info(f"[FORWARD] {message['type']} from {client_id} to {target_id}")
                     if target_id in manager.active_connections:
                         await manager.active_connections[target_id].send_text(data)
                     else:
@@ -152,6 +152,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                 elif message["type"] == "draw-data":
                     room_id = message.get("room_id")
                     if room_id and room_id in manager.rooms:
+                        logger.debug(f"Broadcast draw-data from {client_id} to room {room_id}")
                         await manager.broadcast_to_room(
                             json.dumps({
                                 "type": "draw-data",
@@ -159,12 +160,13 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                                 "sender_id": message["sender_id"],
                                 "room_id": room_id
                             }),
-                                room_id,
-                                exclude_client_id=message["sender_id"]
+                            room_id,
+                            exclude_client_id=message["sender_id"]
                              )
                 elif message["type"] == "sync_timer":
                     room_id = message.get("room_id")
                     if room_id and room_id in manager.rooms:
+                        logger.debug(f"Broadcast sync_timer from {client_id}")
                         await manager.broadcast_to_room(
                             json.dumps({
                                 "type": "start_timer",

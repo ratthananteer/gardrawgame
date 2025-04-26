@@ -18,11 +18,6 @@ Connection error: [WinError 1225] The remote computer refused the network connec
 
 
 
-
-
-
-
-
 import pygame
 import sys
 import json
@@ -920,20 +915,23 @@ class DrawingGameNetwork:
 
         
     def send_drawing_data(self, draw_data):
-        if hasattr(self, 'local_mode') and self.local_mode:
-            # ในโหมด local ไม่ต้องส่งข้อมูลทางเครือข่าย
-            return
+        # if hasattr(self, 'local_mode') and self.local_mode:
+        #     # ในโหมด local ไม่ต้องส่งข้อมูลทางเครือข่าย
+        #     return
         
         for target_id, channel in self.data_channels.items():
-            if channel.readyState == "open":
-                channel.send(json.dumps({
-                    "type": "draw",
-                    "data": draw_data,
-                    "sender_id": self.player_id
-                }))
+            if not self.is_channel_ready(target_id):
+                print(f"⏳ Cannot send draw data to {target_id}: Channel not ready")
+                continue
+            print(f"📤 Sending draw data to {target_id}: {draw_data}")
+            channel.send(json.dumps({
+            "type": "draw-data",
+            "data": draw_data
+            }))
     
     def handle_remote_draw(self, data):
         """Handle drawing data received from other players"""
+        print(f"🖌️ Rendering remote draw data: {data}")
         try:
             if data["type"] == "draw_start":
                 pygame.draw.circle(self.canvas, data["color"], 

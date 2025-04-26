@@ -8,10 +8,11 @@ from pygame import key
 
 import asyncio
 import websockets
-from aiortc import RTCPeerConnection, RTCSessionDescription , RTCIceCandidate
+from aiortc import RTCPeerConnection, RTCSessionDescription , RTCIceCandidate , RTCIceServer , RTCConfiguration
 import threading
 import uuid
 import ssl
+from collections import defaultdict
 
 # Initialize pygame
 pygame.init()
@@ -306,7 +307,7 @@ def check_guess(guess):
 # Draw scoreboard
 def draw_scoreboard():
     # Background
-    pygame.draw.rect(screen, DARK_GRAY, (10, 10, 200, 150))
+    pygame.draw.rect(screen, DARK_GRAY, (10, 10, 200, 200)) 
     
     # Title
     title = font.render("Scoreboard", True, WHITE)
@@ -348,7 +349,7 @@ def draw_scoreboard():
         if i >= 3:  # Limit to top 3 players
             break
         player_text = font.render(f"{i+1}. {name}: {score}", True, WHITE)
-        screen.blit(player_text, (20, 20 + y_offset))
+        screen.blit(player_text, (20, 20 + y_offset + 50))
         y_offset += 25
 
 # Draw chat
@@ -656,6 +657,8 @@ def start_new_round():
     game_session["round_end_time"] = game_session["round_start_time"] + (game_session["round_duration"] * 1000)
     
     if game_instance:
+        if user_data["role"] == "drawer" and game_instance.network.is_channel_ready():
+            game_instance.network.broadcast_start_timer(game_session["round_duration"])
         try:
             asyncio.run_coroutine_threadsafe(
                 game_instance.network.sync_timer(game_session["round_duration"]),
@@ -744,146 +747,116 @@ def all_players_guessed():
 # oak code
 class DrawingGameNetwork:
     def __init__(self, player_id, room_id="default_room"):
+        self.channel_ready_map = {} 
         self.player_id = player_id
         self.room_id = room_id
         self.websocket = None
         self.peer_connections = {}
         self.data_channels = {}
-        #self.room_members = []
         self.loop = asyncio.new_event_loop() 
         self.running = True
         self.timer_callback = None
+        self.peer_ready = {}
+        self.allow_drawing = False
+        self.pending_messages = defaultdict(list)
+        self.canvas = None
 
     def set_canvas(self, canvas):
         self.canvas = canvas   
+
     async def connect_to_server(self):
         try:
             ssl_context = ssl.create_default_context()
             ssl_context.check_hostname = False
             ssl_context.verify_mode = ssl.CERT_NONE # สำหรับการทดสอบ
-            headers = {
-            "Origin": "https://192.168.2.69",
-            "User-Agent": "DrawingGame/1.0",
-            "Sec-WebSocket-Protocol": "chat"
-        }
-            
-            
+                    
             ws_url = f"wss://192.168.2.69:8000/ws/{self.player_id}"
-
-            
-            #ws_url = f"ws://localhost:8000/ws/{self.player_id}"
-            print("Connecting with Origin: https://localhost")
+         
+            #ws_url = f"ws://localhost:8000/ws/{self.player_id}"       
             print("WebSocket URL:", ws_url)
-            print("Headers:", {
-                "Origin": "https://localhost",
-                "User-Agent": "DrawingGame/1.0"
-            })
             print(f"Player ID: {self.player_id}")
             print(f"Room ID: {self.room_id}")
             self.websocket = await websockets.connect(
                 ws_url,
-                ssl=ssl_context,             
-                extra_headers=headers
-            
+                ssl=ssl_context,                     
             )
+            print(f"[DEBUG] Connected WebSocket: {self.websocket}")
             print(f"Successfully connected to ")
             asyncio.create_task(self.listen_to_server())
+
         except Exception as e:
-            print(f"Connection error: {str(e)}")
-            self.local_mode = True
+            print(f"❌ Failed to connect WebSocket: {e}")
+            self.websocket = None
         
     async def listen_to_server(self):
         try:
             async for message in self.websocket:
                 data = json.loads(message)
-                
-                if data["type"] == "room_joined":
+                msg_type = data.get("type")         
+                if msg_type == "room_joined":
                     self.room_id = data["room_id"]
                     self.room_members = data["members"]
                     print(f"Joined room {self.room_id} with members: {self.room_members}")
                     for member in self.room_members:
                         if member != self.player_id:
+                            print("initialize_listenserver")
                             await self.initialize_p2p(member)
                 
-                elif data["type"] == "new_member":
-                    self.room_members = data["members"]
+                elif msg_type == "new_member":
                     print(f"New member joined: {data['member_id']}")
                 
-                elif data["type"] == "member_left":
+                elif msg_type == "member_left":
                     self.room_members = data["members"]
                     print(f"Member left: {data['member_id']}")
                     
-                elif data["type"] == "offer":
+                elif msg_type == "offer":
                     await self.handle_offer(data)
                     
-                elif data["type"] == "answer":
+                elif msg_type == "answer":
                     await self.handle_answer(data)
                     
-                elif data["type"] == "ice-candidate":
+                elif msg_type == "ice-candidate":
+                    print(f"[ICE] Received ICE candidate from {data['sender_id']}")
                     await self.handle_ice_candidate(data)
                     
-                elif data["type"] == "draw-data":
+                elif msg_type == "draw-data":
                     self.handle_remote_draw(data["data"])
-
-                elif data["type"] == "ice-candidate":
-                    await self.handle_ice_candidate(data)
-                    
+                             
         except websockets.exceptions.ConnectionClosed:
             print("Connection to server closed")
             
     async def join_room(self, room_id):  
-        if not self.websocket or self.websocket.closed:
+        if not self.websocket or not hasattr(self.websocket, "closed") or self.websocket.closed:
             print("WebSocket connection is not established")
             return False
-
         try:
             # ส่งคำขอเข้าร่วมห้อง
             join_message = {
                 "type": "join_room",
                 "room_id": room_id,
                 "player_id": self.player_id,
-                "player_name": user_data.get("name", "Anonymous"),  # เพิ่มชื่อผู้เล่น
-                "timestamp": int(time.time())  # เพิ่ม timestamp
-            }
-        
+                "player_name": user_data.get("name", "Anonymous"), 
+                "timestamp": int(time.time())  
+            }       
             await self.websocket.send(json.dumps(join_message))
-            print(f"Sent join request for room: {room_id}")
-        
-            # รอการยืนยันจากเซิร์ฟเวอร์
-            response = await asyncio.wait_for(
-                self.websocket.recv(),
-                timeout=5.0
-            )
-            response_data = json.loads(response)
-        
-            if response_data.get("type") == "room_joined":
-                self.room_id = room_id
-                self.room_members = response_data.get("members", [])
-                print(f"Successfully joined room {room_id} with members: {self.room_members}")
-            
-                # เริ่มการเชื่อมต่อ P2P กับสมาชิกอื่นในห้อง
-                for member in self.room_members:
-                    if member != self.player_id:
-                        await self.initialize_p2p(member)
-            
-                return True
-            else:
-                print(f"Failed to join room: {response_data.get('error', 'Unknown error')}")
-                return False
-            
-        except asyncio.TimeoutError:
-            print("Timeout while waiting for room join confirmation")
-            return False
+            print(f"Sent join request for room: {room_id}")           
+            return True       
         except Exception as e:
             print(f"Error joining room: {str(e)}")
             return False
             
     async def initialize_p2p(self, target_id):
-        pc = RTCPeerConnection()
+        configuration = RTCConfiguration([RTCIceServer(urls="stun:stun.l.google.com:19302")])
+        print("[DEBUG] Creating RTCPeerConnection with STUN servers")       
+        pc = RTCPeerConnection(configuration)
         self.peer_connections[target_id] = pc
+        print(f"[initialize_p2p] Creating offer for {target_id}")
+
         @pc.on("icecandidate")
         async def on_icecandidate(event):
+            print(f"[DEBUG] ICE candidate callback fired: {event.candidate}")
             if event.candidate:
+                print(f"[ICE] Sending ICE candidate to {target_id}")
                 await self.websocket.send(json.dumps({
                     "type": "ice-candidate",
                     "sender_id": self.player_id,
@@ -894,29 +867,12 @@ class DrawingGameNetwork:
                         "sdpMLineIndex": event.candidate.sdpMLineIndex,
                     }
                 }))
+        
         channel = pc.createDataChannel("drawing")
-        def broadcast_start_timer(self, seconds):
-            message = {
-                "type": "start_timer",
-                "time": seconds
-            }
-            for target_id, channel in self.data_channels.items():
-                if channel.readyState == "open":
-                    channel.send(json.dumps(message))
-
-        @channel.on("open")
-        def on_open():
-            print(f"Data channel opened with {target_id}")
-            self.data_channels[target_id] = channel
-            
-        @channel.on("message")
-        def on_message(msg):
-            data = json.loads(msg)
-            self.handle_remote_draw(data)
+        self.data_channels[target_id] = channel
+        self.setup_channel(channel, target_id)
         
-        offer = await pc.createOffer()
-        await pc.setLocalDescription(offer)
-        
+        await pc.setLocalDescription(await pc.createOffer())     
         await self.websocket.send(json.dumps({
             "type": "offer",
             "sender_id": self.player_id,
@@ -924,44 +880,43 @@ class DrawingGameNetwork:
             "offer": {"sdp": pc.localDescription.sdp, "type": pc.localDescription.type},
             "room_id": self.room_id
         }))
+        print(f"📨 ส่ง offer ให้ {target_id}")
+    async def handle_offer(self, data):   
+        sender = data["sender_id"] 
+        print(f"📩 (client) handle_offer called from {sender}")
+        configuration = RTCConfiguration([RTCIceServer(urls="stun:stun.l.google.com:19302")])
         
-    async def handle_offer(self, data):
-        pc = RTCPeerConnection()
-        self.peer_connections[data["sender_id"]] = pc
+        pc = RTCPeerConnection(configuration)    
+        self.peer_connections[sender] = pc
+        print(f"[handle_offer] Offer received from {sender}")
         
+
+        @pc.on("icecandidate")
+        async def on_icecandidate(event):
+            print(f"[DEBUG] ICE candidate callback fired: {event.candidate}")
+            if event.candidate:
+                print(f"[ICE] Sending ICE candidate to {data['sender_id']}")
+                await self.websocket.send(json.dumps({
+                    "type": "ice-candidate",
+                    "sender_id": self.player_id,
+                    "target_id": sender,
+                    "candidate": {
+                        "candidate": event.candidate.candidate,
+                        "sdpMid": event.candidate.sdpMid,
+                        "sdpMLineIndex": event.candidate.sdpMLineIndex,
+                }
+                }))
+
         @pc.on("datachannel")
         def on_datachannel(channel):
-            print(f"Data channel received from {data['sender_id']}")
-            self.data_channels[data["sender_id"]] = channel
-            
-            @channel.on("open")
-            def on_open():
-                print(f"✅ Data channel with {data['sender_id']} is open and ready.")
-            
-            @channel.on("message")
-            def on_message(msg):
-                try: 
-                    data = json.loads(msg)
-
-                    if data["type"] == "start_timer":
-                        print(f" Timer started for {data['time']} seconds")
-                        if self.timer_callback:
-                            self.timer_callback(data["time"])
-                        else:
-                            print("⚠️ No timer callback set!")
-                    elif data["type"] in ["draw", "draw_start"]:
-                        self.handle_remote_draw(data)
-                    self.handle_drawing_data(msg, sender_id=data["sender_id"])
-                
-                except Exception as e:
-                    print(f"❌ Failed to process message: {e}")
-        await pc.setRemoteDescription(
-            RTCSessionDescription(sdp=data["offer"]["sdp"], type=data["offer"]["type"])
-        )
-        
-        answer = await pc.createAnswer()
-        await pc.setLocalDescription(answer)
-        
+            print(f"Data channel received from {sender}")
+            self.data_channels[sender] = channel
+            self.setup_channel(channel, sender)
+           
+        offer = RTCSessionDescription(sdp=data["offer"]["sdp"], type=data["offer"]["type"])
+        await pc.setRemoteDescription(offer)             
+        await pc.setLocalDescription(await pc.createAnswer())     
+        self.peer_ready[sender] = True
         await self.websocket.send(json.dumps({
             "type": "answer",
             "sender_id": self.player_id,
@@ -969,72 +924,151 @@ class DrawingGameNetwork:
             "answer": {"sdp": pc.localDescription.sdp, "type": pc.localDescription.type},
             "room_id": self.room_id
         }))
-        
+        print(f"📩 ส่ง answer กลับให้ {sender}")
     async def handle_answer(self, data):
+        sender = data["sender_id"]
         pc = self.peer_connections[data["sender_id"]]
-        await pc.setRemoteDescription(
-            RTCSessionDescription(sdp=data["answer"]["sdp"], type=data["answer"]["type"])
-        )
+        if not pc:
+            print(f"⚠️ ไม่พบ PeerConnection ของ {sender}")
+            return
+        answer = RTCSessionDescription(sdp=data["answer"]["sdp"], type=data["answer"]["type"])
+        await pc.setRemoteDescription(answer)
+        print(f"✅ ตั้งค่า answer จาก {sender}")
+
         
     async def handle_ice_candidate(self, data):
-        pc = self.peer_connections.get(data["sender_id"])
+        """เพิ่ม ICE candidate ที่ได้รับเข้ากับ PeerConnection"""
+        sender = data["sender_id"]
+        pc = self.peer_connections.get(sender)
         if not pc:
-            print("PeerConnection not found for ICE candidate")
+            print(f"⚠️ ไม่พบ PeerConnection ของ {sender} สำหรับ ICE candidate")
             return
+        cand = data["candidate"]
         candidate = RTCIceCandidate(
-            sdpMid=data["candidate"]["sdpMid"],
-            sdpMLineIndex=data["candidate"]["sdpMLineIndex"],
-            candidate=data["candidate"]["candidate"]
+            sdpMid=cand["sdpMid"],
+            sdpMLineIndex=cand["sdpMLineIndex"],
+            candidate=cand["candidate"]
         )
         await pc.addIceCandidate(candidate)
 
-        
-    def send_drawing_data(self, draw_data):
-        if not hasattr(self, 'data_channels') or not self.data_channels:
-            print("⚠️ No active data channels to send drawing data")
-            return
-        
-        for target_id, channel in self.data_channels.items():
+    def setup_channel(self, channel, peer_id):
+        """กำหนด event handlers สำหรับ DataChannel (open, message)"""
+        print(f"🔧 ตั้งค่า DataChannel กับ {peer_id} (initial state: {channel.readyState})")
+        @channel.on("open")
+        def on_open():
+            print(f"✅ DataChannel กับ {peer_id} เปิดเชื่อมต่อ (state={channel.readyState})")
+            self.channel_ready_map[peer_id] = True
+            self.peer_ready[peer_id] = True
+            print(f"🚀 Peer {peer_id} พร้อมวาดรูปได้แล้ว")
+        if peer_id in self.pending_messages:
+            for msg in self.pending_messages[peer_id]:
+                try:
+                    channel.send(msg)
+                    print(f"✉️ ส่ง pending message ไปยัง {peer_id}")
+                except Exception as e:
+                    print(f"❌ ไม่สามารถส่ง pending message ไปยัง {peer_id}: {e}")
+            del self.pending_messages[peer_id]
+        @channel.on("message")
+        def on_message(message):
+            print(f"📨 รับข้อมูลจาก {peer_id}: {message}")
             try:
-                if channel.readyState == "open":  # ตรวจสอบสถานะที่ถูกต้อง
-                    channel.send(json.dumps({
-                    "type": "draw",
-                    "data": draw_data,
-                    "sender_id": self.player_id,
-                    "room_id": self.room_id
-                }))
+                print(f"📨 รับข้อมูลจาก {peer_id}: {message}")
+                data = json.loads(message)
+            
+                # Handle different message types
+                if data.get("type") == "draw":
+                    self.handle_remote_draw(data["data"])
+                elif data.get("type") == "draw-data":
+                    self.handle_remote_draw(data)
+                elif data.get("type") == "draw_start":
+                    self.handle_remote_draw(data)
+                elif data.get("type") == "ping":
+                    print(f"🏓 ได้รับ ping จาก {peer_id}")
+                    channel.send(json.dumps({"type": "pong"}))
+                elif data.get("type") == "pong":
+                    print(f"🏓 ได้รับ pong จาก {peer_id}")
                 else:
-                    print(f"Channel to {target_id} is not open (state: {channel.readyState})")
+                    print(f"📥 ได้รับข้อความที่ไม่รู้จัก: {data}")
+                
+            except json.JSONDecodeError:
+                print(f"📥 ได้รับข้อความที่ไม่ใช่ JSON: {message}")
             except Exception as e:
-                print(f"Error sending drawing data to {target_id}: {e}")
-    
-    def handle_remote_draw(self, data):
-        """Handle drawing data received from other players"""
+                print(f"❌ เกิดข้อผิดพลาดขณะประมวลผลข้อความ: {e}")
+        
+        if channel.readyState == "open":
+            print(f"⚡ Channel กับ {peer_id} เปิดอยู่แล้วขณะ bind - เรียก on_open() เลย")
+            on_open()
+
+    def send_drawing_data(self, draw_data):
+        """ส่งข้อมูลการวาดไปยัง peer ทุกตัว"""
+        if not self.data_channels:
+            print("⚠️ ยังไม่มีช่องข้อมูล (data channel) ใช้งาน")
+            return
+        payload = {
+            "type": "draw",
+            "data": draw_data,
+            "sender_id": self.player_id,
+            "room_id": self.room_id
+        }
         try:
-            print(f" Received drawing data: {data}") 
+            msg = json.dumps(payload)
+        
+            for target_id, channel in self.data_channels.items():
+                if channel.readyState == "open":
+                    try:
+                        channel.send(msg)
+                        print(f"✉️ ส่งข้อมูลวาดไปยัง {target_id}: {msg}")
+                    except Exception as e:
+                        print(f"❌ ส่งไป {target_id} ไม่สำเร็จ: {e}")
+                        # เก็บข้อความไว้ใน pending messages
+                        self.pending_messages[target_id].append(msg)
+                else:
+                    print(f"⏳ ช่องข้อมูลกับ {target_id} ยังไม่พร้อม (state={channel.readyState})")
+                    # เก็บข้อความไว้ใน pending messages
+                    self.pending_messages[target_id].append(msg)
+                
+        except Exception as e:
+            print(f"❌ เกิดข้อผิดพลาดขณะเตรียมส่งข้อมูล: {e}")
 
-            draw_data = data.get("data", {})
-            draw_type = draw_data.get("type")
 
-            if draw_type == "draw_start":
-                pygame.draw.circle(
-                    self.canvas,
-                    draw_data["color"],
-                    draw_data["pos"],
-                    draw_data["brush_size"] // 2
-            )
 
-            elif draw_type == "draw":
-                pygame.draw.line(
-                    self.canvas,
-                    draw_data["color"],
-                    draw_data["start_pos"],
-                    draw_data["end_pos"],
-                    draw_data["brush_size"]
-                )
+    def handle_remote_draw(self, data):
+        print(f"[DRAW] Handling drawing data: {data}")
+        print(f"Start: {data.get('start_pos')}, End: {data.get('end_pos')}, Color: {data.get('color')}, Brush: {data.get('brush_size')}")
+        try:
+
+            if not isinstance(data, dict):
+                print("⚠️ ข้อมูลวาดรูปไม่ถูกต้อง")
+                return
+            
+            if data.get("type") in ["draw", "draw-data", "draw_start"]:
+                draw_data = data.get("data", data)
+            
+                # ดึงข้อมูลที่จำเป็น
+                start_pos = draw_data.get("start_pos")
+                end_pos = draw_data.get("end_pos")
+                color = tuple(draw_data.get("color", (0, 0, 0)))
+                brush_size = draw_data.get("brush_size", 3)
+            
+                if not start_pos or not end_pos:
+                    print("⚠️ ข้อมูลตำแหน่งไม่ครบถ้วน")
+                    return
+                
+            # วาดเส้น
+                pygame.draw.line(self.canvas, color, start_pos, end_pos, brush_size)
+                print(f"✅ วาดเส้นจาก {start_pos} ถึง {end_pos} ด้วยสี {color} และขนาด {brush_size}")
+            
+                # อัพเดทหน้าจอ
+                if hasattr(self, 'screen'):
+                    self.screen.blit(self.canvas, (0, 0))
+                    pygame.display.flip()
+                
+            else:
+                print(f"⚠️ ประเภทข้อมูลไม่รู้จัก: {data.get('type')}")
             
         except Exception as e:
-            print(f"Error handling remote draw: {e}")
+            print(f"❌ เกิดข้อผิดพลาดขณะวาด: {e}")
+
     async def sync_timer(self, duration):
         if self.websocket:
             await self.websocket.send(json.dumps({
@@ -1048,35 +1082,50 @@ class DrawingGameNetwork:
     async def check_connection(self):
         while self.running:
             await asyncio.sleep(5)
-            if self.websocket and not self.websocket.closed:
+            if hasattr(self.websocket, "closed") and not self.websocket.closed:
                 try:
                     await self.websocket.ping()
+                    self.send_test_ping()
                 except:
                     print("Connection lost, attempting to reconnect...")
                     await self.connect_to_server()
-    async def join_room(self, room_id):
-        """เข้าร่วมห้องเกม"""
-        if not self.websocket or self.websocket.closed:
-            print("WebSocket connection is not established")
-            return False
-
-        try:
-            await self.websocket.send(json.dumps({
-                "type": "join_room",
-                "room_id": room_id,
-                "player_id": self.player_id,
-                "player_name": user_data["name"] if "name" in user_data else "Anonymous"
-            }))
-            print(f"Sent join request for room: {room_id}")
-            return True
-        except Exception as e:
-            print(f"Error joining room: {str(e)}")
-            return False
-        
+    
+   
     def set_timer_callback(self, callback):
         self.timer_callback = callback
-       
-'''#####################################################################################'''
+
+
+    def broadcast_start_timer(self, seconds):
+        message = {
+            "type": "start_timer",
+            "time": seconds,
+            "drawer": game_session["current_drawer"]
+        }
+        for target_id, channel in self.data_channels.items():
+            try:
+                if channel.readyState == "open":
+                    print(f"[DRAW] Sending draw to {target_id}: {json.dumps(message)}")
+                    channel.send(json.dumps(message))
+            except Exception as e:
+                print(f" Failed to send timer to {target_id}: {e}")
+    def is_channel_ready(self, target_id=None):
+        return self.channel_ready_map.get(target_id, False)
+
+    
+    def send_test_ping(self):
+        print(" [PING] Sending test ping")
+        for target_id, channel in self.data_channels.items():
+            if channel.readyState == "open":
+                print(f" Sending ping to {target_id}")
+                channel.send(json.dumps({"type": "ping"}))
+            else:
+                print(f" Channel to {target_id} not ready")
+
+    def send_test_pong(self):
+        for target_id, channel in self.data_channels.items():
+            if channel.readyState == "open":
+                channel.send(json.dumps({"type": "pong"}))
+
 class DrawingGame:
     def __init__(self, room=None):
         
@@ -1089,7 +1138,9 @@ class DrawingGame:
         self.countdown_time = 0
         self.countdown_running = False
         self.last_tick = 0
-        
+        self.last_draw_pos = None
+        self.active_color = None
+        self.active_brushsize = None
     # Network setup
         self.network = DrawingGameNetwork(
             player_id=user_data.get("name") or str(uuid.uuid4()),
@@ -1104,7 +1155,6 @@ class DrawingGame:
     def run(self):
         import pygame
         clock = pygame.time.Clock()
-
         while self.running:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -1136,7 +1186,7 @@ class DrawingGame:
 
 
     def draw(self):
-        self.canvas.fill((255, 255, 255))  # ตัวอย่างการเคลียร์หน้าจอ
+        #self.canvas.fill((255, 255, 255))  # ตัวอย่างการเคลียร์หน้าจอ
         screen.blit(self.canvas, (0, 0))
         if self.countdown_running:
             font = pygame.font.SysFont(None, 48)
@@ -1165,60 +1215,45 @@ class DrawingGame:
         except Exception as e:
             print(f"Network error: {e}")
         finally:
+            print("Shutting down network loop safely...")
+            pending = asyncio.all_tasks(loop)
+            for task in pending:
+                task.cancel()
+            try:
+                loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+            except Exception as e:
+                print("Error while shutting down tasks:", e)
             loop.close()
         
     def handle_drawing_event(self, event):
-        # Get the current mouse position
-        current_pos = pygame.mouse.get_pos()
-    
-        # If we're just starting to draw
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            self.drawing = True
-            self.last_pos = current_pos
-        
-            # Create a draw start point
-            draw_data = {
-                "type": "draw_start",
-                "pos": current_pos,
-                "color": self.current_color,
-                "brush_size": self.brush_size,
+        if not self.network:
+            print("❌ No network connection to send drawing data.")
+            return
+
+        for target_id in self.network.data_channels:
+            if not self.network.is_channel_ready(target_id):
+                print(f"⏳ Channel to {target_id} not ready. Skipping draw.")
+                continue
+            if not self.network.peer_ready.get(target_id, False):
+                print(f"⏳ Peer {target_id} not ready. Skipping draw.")
+                continue
+
+            if event.type == pygame.MOUSEMOTION and event.buttons[0]:
+                draw_data = {
+                "type": "draw",
+                "start_pos": self.last_draw_pos if self.last_draw_pos else event.pos,
+                "end_pos": event.pos,
+                "color": self.active_color or (0 ,0 ,0),
+                "brush_size": self.active_brushsize or 3,
                 "sender_id": self.network.player_id,
                 "room_id": self.network.room_id
-            }
-            if self.network.data_channels:
-                for ch in self.network.data_channels.values():
-                    if ch.readyState != "open":
-                        print("⏳ Waiting for data channel to open...")
-                        return  # ยังไม่พร้อมก็ไม่ส่ง
-
-            self.network.send_drawing_data(draw_data)
-    
-        # If we're dragging to draw
-        elif event.type == pygame.MOUSEMOTION and self.drawing:
-            if self.last_pos:
-                
-                pygame.draw.line(self.canvas, self.current_color,
-                           self.last_pos, current_pos,
-                           self.brush_size)
-            
-                #  Send drawing data to network
-                draw_data = {
-                    "type": "draw",
-                    "start_pos": self.last_pos,
-                    "end_pos": current_pos,
-                    "color": self.current_color,
-                    "brush_size": self.brush_size,
-                     "sender_id": self.network.player_id,
-                    "room_id": self.network.room_id
                 }
+
+                print(f"[DRAW] Sending drawing data: {draw_data}")
                 self.network.send_drawing_data(draw_data)
-        
-            self.last_pos = current_pos
-    
-        # If we stop drawing
-        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-            self.drawing = False
-            self.last_pos = None
+                self.last_draw_pos = event.pos  # เก็บตำแหน่งล่าสุดไว้
+
+
     def start_countdown(self, duration):
         self.countdown_time = duration
         self.countdown_running = True
@@ -1256,17 +1291,21 @@ while running:
     # Update word hint if in drawing mode
     if game_state in [DRAWING, GUESSING] and selected_word:
         update_word_hint()
-        if game_instance:
-            game_instance.draw_player_list()
+        # if game_instance:
+        #     if user_data["role"] == "drawer":
+        #         game_instance.network.broadcast_start_timer(game_session["round_duration"])
+        #         game_instance.draw_player_list()
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             user_data["logged_in"] = False
             save_user_data()
-            if game_instance:  # ปิด network ก่อนออก
-                game_instance.running = False
-                if hasattr(game_instance, 'network_thread'):
-                    game_instance.network_thread.join()
+            if game_instance:
+                if user_data["role"] == "drawer":
+                    game_instance.network.broadcast_start_timer(game_session["round_duration"])  # ปิด network ก่อนออก
+                    game_instance.running = False
+                    if hasattr(game_instance, 'network_thread'):
+                        game_instance.network_thread.join()
             running = False
 
         elif game_state == MENU:
@@ -1293,12 +1332,16 @@ while running:
                         room_input = generate_room_id()
 
                         game_instance = DrawingGame(room=room_input)
-
                         canvas = game_instance.canvas  # ใช้ canvas จาก game_instance
                         game_instance.network.room_id = room_input  # ตั้งค่าห้อง
-                        print(f"สร้างห้องสำเร็จ Room ID: {room_input}")
+                        
+                        print(f"สร้างห้องสำเร็จ Room ID: {room_input}")       
                         status_message = f"Creating room as {user_data['name']}..."
-                        status_timer = 60
+                       
+                        for _ in range(50):  # 50 * 0.1s = 5 วินาที
+                            if game_instance.network.is_channel_ready():
+                                break
+                            time.sleep(0.1)
                         game_state = start_new_round()
                         
                     elif join_room_button.collidepoint(event.pos):
@@ -1316,9 +1359,14 @@ while running:
                             game_instance = DrawingGame(room=room_input)  
                             canvas = game_instance.canvas
                             print(f"พยายามเข้าร่วมห้อง: {room_input}")
-
-                       
+                        
                         game_instance.network.room_id = room_input or "default_room"  # ตั้งค่าห้อง
+
+                        for _ in range(50):  # รอ channel เปิด
+                            if game_instance.network.is_channel_ready():
+                                break
+                            time.sleep(0.1)
+                        
 
                         status_message = f"Joining room as {user_data['name']}..."
                         status_timer = 60
@@ -1369,6 +1417,7 @@ while running:
                         room_input = room_input[:-1]
                     else:
                         room_input += event.unicode
+                
 
         elif game_state == WORD_CHOOSING:
             selected_word, game_state = word_selection_screen(screen, "words.json")
@@ -1379,7 +1428,7 @@ while running:
                 if user_data["name"] not in scores:
                     scores[user_data["name"]] = 0
 
-        elif game_state == DRAWING:
+        elif game_state == DRAWING:          
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
                     # Check UI elements first
@@ -1399,6 +1448,9 @@ while running:
                         status_timer = 30
                     elif chat_input_box.collidepoint(event.pos) and user_data["role"] == "guesser" and user_data["name"] not in game_session["correct_guessers"]:
                         chat_active = True
+                    
+                        
+
                     else:
                         # Check brush size buttons
                         for i, btn in enumerate(brush_size_buttons):
@@ -1434,7 +1486,7 @@ while running:
                                 pygame.draw.circle(canvas, active_color, last_pos, active_brushsize // 2)
                                 if user_data["role"] == "drawer" and game_instance:
                                     game_instance.handle_drawing_event(event)
-
+                    
 
             elif event.type == pygame.MOUSEBUTTONUP:
                 if event.button == 1:
@@ -1486,6 +1538,11 @@ while running:
                         chat_input = ""
                 elif event.key == pygame.K_BACKSPACE:
                     chat_input = chat_input[:-1]
+                elif event.key == pygame.K_p:
+                    print("p1")
+                    if game_instance and game_instance.network:
+                        print("p2")
+                        game_instance.network.send_test_ping()
                 else:
                     chat_input += event.unicode
 
@@ -1568,7 +1625,7 @@ while running:
 
     elif game_state == DRAWING:
         # Draw canvas area
-        screen.blit(canvas, (0, 0))
+        screen.blit(game_instance.canvas, (0, 0))
 
         # Draw new features
         if selected_word:
@@ -1642,7 +1699,7 @@ while running:
 
     elif game_state == GUESSING:
         # Draw canvas area
-        screen.blit(canvas, (0, 0))
+        screen.blit(game_instance.canvas, (0, 0))
 
         # Draw UI elements
         if selected_word:
@@ -1665,17 +1722,6 @@ while running:
 
     pygame.display.flip()
 
-if game_instance:
-    game_instance.running = False  # ส่งสัญญาณให้ network thread หยุดทำงาน
-    if hasattr(game_instance, 'network_thread') and game_instance.network_thread.is_alive():
-        game_instance.network_thread.join()  # รอให้ thread ทำงานเสร็จ
+
 pygame.quit()
 
-
-
-# if __name__ == "__main__":
-#     room_input = input("กรุณากรอกรหัสห้อง (เช่น AI9MM): ") or "default_room"
-#     game_instance = DrawingGame()
-#     game_instance.run()
-#     pygame.quit()
-#     sys.exit()
