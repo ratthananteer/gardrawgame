@@ -124,6 +124,7 @@ MENU = "menu"
 DRAWING = "drawing"
 WORD_CHOOSING = "word_choosing"
 GUESSING = "guessing"
+LOBBY = "lobby"
 game_state = MENU
 
 # User data storage
@@ -172,6 +173,7 @@ join_room_button = pygame.Rect((WIDTH - button_width) // 2, 300, button_width, b
 drawer_demo_button = pygame.Rect((WIDTH - button_width) // 2, 340, button_width, button_height)
 guesser_demo_button = pygame.Rect((WIDTH - button_width) // 2, 380, button_width, button_height)
 quit_button = pygame.Rect((WIDTH - button_width) // 2, 420, button_width, button_height)
+
 
 # Name input box position updated to be above the first button
 room_input = ""
@@ -749,8 +751,6 @@ def all_players_guessed():
     # If no remaining guessers (and we have at least 2 players)
     return not remaining_guessers and len(all_players) > 1
 
-
-# oak code
 class DrawingGameNetwork:
     def __init__(self, player_id, room_id="default_room"):
         self.channel_ready_map = {} 
@@ -766,7 +766,15 @@ class DrawingGameNetwork:
         self.allow_drawing = False
         self.pending_messages = defaultdict(list)
         self.canvas = None
-
+    def safe_send(self, channel, msg):
+        try:
+            if channel.readyState == "open":
+                channel.send(msg)  # <-- แค่ส่งตรง ๆ
+            else:
+                print(f"[safe_send] Channel not open yet (state={channel.readyState})")
+        except Exception as e:
+            print(f"[safe_send] Failed to send message: {e}")
+    
     def set_canvas(self, canvas):
         self.canvas = canvas   
 
@@ -788,6 +796,7 @@ class DrawingGameNetwork:
             )
             print(f"[DEBUG] Connected WebSocket: {self.websocket}")
             print(f"Successfully connected to ")
+            
             asyncio.create_task(self.listen_to_server())
 
         except Exception as e:
@@ -806,10 +815,12 @@ class DrawingGameNetwork:
                     for member in self.room_members:
                         if member != self.player_id:
                             print("initialize_listenserver")
-                            await self.initialize_p2p(member)
+                            asyncio.create_task(self.initialize_p2p(member))
                 
                 elif msg_type == "new_member":
                     print(f"New member joined: {data['member_id']}")
+                    if hasattr(self, 'room_members'):
+                        self.room_members.append(data['member_id'])
                 
                 elif msg_type == "member_left":
                     self.room_members = data["members"]
@@ -826,9 +837,9 @@ class DrawingGameNetwork:
                     
                 elif msg_type == "draw-data":
                     self.handle_remote_draw(data["data"])
+                elif msg_type == "start_game":
+                    self.lobby_ready  = True
                 
-                    
-
         except websockets.exceptions.ConnectionClosed:
             print("Connection to server closed")
             
@@ -853,6 +864,10 @@ class DrawingGameNetwork:
             return False
             
     async def initialize_p2p(self, target_id):
+        if target_id in self.peer_connections:
+            print(f"[initialize_p2p] Peer {target_id} already exists. Skipping...")
+            return
+    
         configuration = RTCConfiguration([RTCIceServer(urls="stun:stun.l.google.com:19302")])
         print("[DEBUG] Creating RTCPeerConnection with STUN servers")       
         pc = RTCPeerConnection(configuration)
@@ -984,21 +999,27 @@ class DrawingGameNetwork:
                 # Handle different message types
                 if data.get("type") in ["draw", "draw-data", "draw_start"]:
                     draw_data = data.get("data", data) 
+                    self.allow_drawing = True
                     self.handle_remote_draw(draw_data)
+
                 elif data.get("type") == "ping":
                     print(f"🏓 ได้รับ ping จาก {peer_id}")
                     channel.send(json.dumps({"type": "pong"}))
+
                 elif data.get("type") == "pong":
                     print(f"🏓 ได้รับ pong จาก {peer_id}")
+
                 elif data.get("type") == "chat":
                     sender = data.get("sender")
                     msg = data.get("message")
                     print(f'ได้รับ chat')
                     chat_messages.append(f"{sender}: {msg}")
+
                 elif data.get("type") == "start_timer":
                     seconds = data.get("time", 60)
                     print(f"🕑 เริ่มจับเวลา {seconds} วินาที")
                     game_instance.start_countdown(seconds)
+
                 elif data.get("type") == "correct_guess":
                     guesser = data.get("guesser")
                     print(f"✅ {guesser} เดาคำถูก!")
@@ -1008,7 +1029,19 @@ class DrawingGameNetwork:
                         scores[guesser] = 0
                     scores[guesser] += 1
 
-                
+                elif data.get("type") == "start_game":
+                    print("🎯 Game started signal received!")
+                    drawer_id = data.get("drawer_id")
+                    global game_state
+                    if drawer_id == self.player_id:
+                        print("🖌️ You are the DRAWER!")
+                        user_data["role"] = "drawer"                   
+                        game_state = WORD_CHOOSING
+                    else:
+                        print("🔎 You are a GUESSER.")
+                        user_data["role"] = "guesser"                    
+                        game_state = GUESSING
+          
                 else:
                     print(f"📥 ได้รับข้อความที่ไม่รู้จัก: {data}")
                 
@@ -1038,15 +1071,13 @@ class DrawingGameNetwork:
             for target_id, channel in self.data_channels.items():
                 if channel.readyState == "open":
                     try:
-                        channel.send(msg)
+                        self.safe_send(channel, msg)
                         #print(f"✉️ ส่งข้อมูลวาดไปยัง {target_id}: {msg}")
                     except Exception as e:
                         print(f"❌ ส่งไป {target_id} ไม่สำเร็จ: {e}")
-                        # เก็บข้อความไว้ใน pending messages
                         self.pending_messages[target_id].append(msg)
                 else:
                     print(f"⏳ ช่องข้อมูลกับ {target_id} ยังไม่พร้อม (state={channel.readyState})")
-                    # เก็บข้อความไว้ใน pending messages
                     self.pending_messages[target_id].append(msg)
                 
         except Exception as e:
@@ -1098,7 +1129,7 @@ class DrawingGameNetwork:
         for target_id, channel in self.data_channels.items():
             if channel.readyState == "open":
                 try:
-                    channel.send(json.dumps(payload))
+                    self.safe_send(channel, json.dumps(payload))
                     print(f"💬 ส่งข้อความแชทไปยัง {target_id}: {msg}")
                 except Exception as e:
                     print(f"❌ ส่งข้อความแชทไปยัง {target_id} ล้มเหลว: {e}")
@@ -1142,7 +1173,7 @@ class DrawingGameNetwork:
         }
         for target_id, channel in self.data_channels.items():
             if channel.readyState == "open":
-                channel.send(json.dumps(message))
+                self.safe_send(channel, json.dumps(message))
 
     def is_channel_ready(self, target_id=None):
         return self.channel_ready_map.get(target_id, False)
@@ -1178,6 +1209,13 @@ class DrawingGameNetwork:
                     print(f"⏳ Channel ของ {peer_id} ยังไม่พร้อม")
             except Exception as e:
                 print(f"❌ ไม่สามารถส่ง timer ให้ {peer_id}: {e}")
+
+    def send_start_game(self):
+        message = {"type": "start_game"}
+        for target_id, channel in self.data_channels.items():
+            if channel.readyState == "open":
+                self.safe_send(channel, json.dumps(message))
+        print("📣 Broadcast start_game to all players")
 
 
 class DrawingGame:
@@ -1326,6 +1364,7 @@ class DrawingGame:
                 if self.countdown_time <= 0:
                     self.countdown_running = False
                     print("Time's up!")
+
     def draw_player_list(self):
         """แสดงรายชื่อผู้เล่นในห้อง"""
         if hasattr(self.network, 'room_members') and self.network.room_members:
@@ -1345,25 +1384,92 @@ class DrawingGame:
                 player_text = font.render(player, True, WHITE)
                 screen.blit(player_text, (40, 195 + i * 30))
 
+class LobbyManager:
+    def __init__(self, network, is_host=False):
+        self.network = network
+        self.players = []
+        self.is_host = is_host
+
+    def update_players(self):
+        """ดึงรายชื่อ player จาก network"""
+        if hasattr(self.network, 'room_members'):
+            self.players = self.network.room_members
+
+    def start_game(self):
+        global game_state
+        print("🎯 Starting game... Broadcasting to others...")
+        if self.is_host:
+            print("📣 [LobbyManager] Broadcasting start_game message to everyone...")
+            game_session["current_drawer"] = self.network.player_id
+            message = {
+            "type": "start_game",
+            "drawer_id": self.network.player_id,  # ส่งไปเลยว่าใครเป็น drawer
+        }
+            for target_id, channel in self.network.data_channels.items():
+                if channel.readyState == "open":
+                    self.network.safe_send(channel, json.dumps(message))
+                    
+        game_state = WORD_CHOOSING
+        
+def draw_lobby_screen(lobby_manager):
+    screen.fill((255, 255, 255))
+    font_big = pygame.font.SysFont(None, 48)
+    font_small = pygame.font.SysFont(None, 32)
+
+    title = font_big.render("Waiting for players...", True, (0, 0, 0))
+    screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 50))
+
+    lobby_manager.update_players() 
+
+    for idx, player_name in enumerate(lobby_manager.players):
+        player_text = font_small.render(player_name, True, (0, 0, 0))
+        screen.blit(player_text, (WIDTH // 2 - player_text.get_width() // 2, 150 + idx * 40))
+
+    start_button = None
+    if lobby_manager.is_host:
+        start_button = pygame.Rect(WIDTH // 2 - 75, HEIGHT - 100, 150, 50)
+        pygame.draw.rect(screen, (0, 200, 0), start_button)
+        start_text = font_small.render("Start Game", True, (255, 255, 255))
+        screen.blit(start_text, (start_button.x + 20, start_button.y + 10))
+
+    return start_button
+
+
+def draw_menu_screen():
+    screen.fill((100, 100, 255))
+    title = font.render("Menu: Press C to Create Room", True, (255, 255, 255))
+    screen.blit(title, (WIDTH // 2 - title.get_width() // 2, HEIGHT // 2 - 100))
+
+# ฟังก์ชันวาดหน้า Drawing
+
+def draw_drawing_screen():
+    screen.fill((255, 255, 255))
+    title = font.render("Drawing Screen!", True, (0, 0, 0))
+    screen.blit(title, (WIDTH // 2 - title.get_width() // 2, HEIGHT // 2 - 100))
+
+# Network Placeholder
+class DummyNetwork:
+    def broadcast_start_game(self):
+        print("[Network] Broadcast start_game")
+
+network = DummyNetwork()
+lobby_manager = LobbyManager(network, is_host=True)
 
 # Main game loop
 running = True
 game_instance = None
 while running:
     handle_system_keys()
-
+    events = pygame.event.get()
     # Get current time
     current_time = pygame.time.get_ticks()
     
     # Update word hint if in drawing mode
     if game_state in [DRAWING, GUESSING] and selected_word:
         update_word_hint()
-        # if game_instance:
-        #     if user_data["role"] == "drawer":
-        #         game_instance.network.broadcast_start_timer(game_session["round_duration"])
-        #         game_instance.draw_player_list()
-
-    for event in pygame.event.get():
+    if game_state == LOBBY:
+        start_button = draw_lobby_screen(lobby_manager)
+    for event in events:
         if event.type == pygame.QUIT:
             user_data["logged_in"] = False
             save_user_data()
@@ -1395,22 +1501,22 @@ while running:
                         user_data["logged_in"] = True
                         user_data["role"] = "drawer"
                         save_user_data()
-
+                        
+                        # game page
                         room_input = generate_room_id()
-
                         game_instance = DrawingGame(room=room_input)
-                        canvas = game_instance.canvas  # ใช้ canvas จาก game_instance
-                        game_instance.network.room_id = room_input  # ตั้งค่าห้อง
+                        canvas = game_instance.canvas
+                        game_instance.network.room_id = room_input
+                        lobby_manager = LobbyManager(game_instance.network, is_host=True)  
                         
                         print(f"สร้างห้องสำเร็จ Room ID: {room_input}")       
-                        status_message = f"Creating room as {user_data['name']}..."
-                       
-                        for _ in range(50):  # 50 * 0.1s = 5 วินาที
-                            if game_instance.network.is_channel_ready():
-                                break
-                            time.sleep(0.1)
-                        game_state = start_new_round()
-                        
+                        status_message = f"Creating room as {user_data['name']}..."                     
+                        # for _ in range(50):  # 50 * 0.1s = 5 วินาที
+                        #     if game_instance.network.is_channel_ready():
+                        #         break
+                        #     time.sleep(0.1)
+                        game_state = LOBBY
+                                             
                     elif join_room_button.collidepoint(event.pos):
                         if not user_text:
                             user_text = "Anonymous"
@@ -1427,17 +1533,16 @@ while running:
                             canvas = game_instance.canvas
                             print(f"พยายามเข้าร่วมห้อง: {room_input}")
                         
-                        game_instance.network.room_id = room_input or "default_room"  # ตั้งค่าห้อง
-
-                        for _ in range(50):  # รอ channel เปิด
-                            if game_instance.network.is_channel_ready():
-                                break
-                            time.sleep(0.1)
-                        
-
-                        status_message = f"Joining room as {user_data['name']}..."
-                        status_timer = 60
-                        game_state = GUESSING
+                            game_instance.network.room_id = room_input or "default_room"  # ตั้งค่าห้อง                      
+                            asyncio.run(game_instance.network.join_room(room_input))
+                            # for _ in range(50):  # รอ channel เปิด
+                            #     if game_instance.network.is_channel_ready():
+                            #         break
+                            #     time.sleep(0.1)                   
+                            lobby_manager = LobbyManager(game_instance.network, is_host=False)
+                            status_message = f"Joining room as {user_data['name']}..."
+                            status_timer = 60
+                            game_state = LOBBY
                         
                     elif drawer_demo_button.collidepoint(event.pos):
                         if not user_text:
@@ -1485,6 +1590,11 @@ while running:
                     else:
                         room_input += event.unicode
                 
+        elif game_state == LOBBY:
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if start_button and start_button.collidepoint(event.pos) and lobby_manager.is_host:
+                    print("[Lobby] Start button clicked!")
+                    lobby_manager.start_game()
 
         elif game_state == WORD_CHOOSING:
             selected_word, game_state = word_selection_screen(screen, "words.json")
@@ -1692,6 +1802,9 @@ while running:
             status_rect = status_text.get_rect(center=(WIDTH // 2, quit_button.bottom + 30))
             pygame.draw.rect(screen, BLACK, status_rect.inflate(20, 10), border_radius=5)
             screen.blit(status_text, status_rect)
+    
+    elif game_state == LOBBY:
+        draw_lobby_screen(lobby_manager) 
 
     elif game_state == DRAWING:
         # Draw canvas area
