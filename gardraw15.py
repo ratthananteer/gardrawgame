@@ -18,7 +18,7 @@ from collections import defaultdict
 pygame.init()
 
 # Game settings
-WIDTH, HEIGHT = 1000, 600
+WIDTH, HEIGHT = 1200, 800
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Drawing Game")
 
@@ -406,24 +406,30 @@ def draw_chat():
             lines.append((' '.join(current_line), color))
         
         wrapped_messages.extend(lines)
+
+    y_offset = chat_box.y + 40
+    for line_text, color in wrapped_messages[-15:]:
+        text_surface = font.render(line_text, True, color)
+        screen.blit(text_surface, (chat_box.x + 10, y_offset))
+        y_offset += font.get_height() + 5
     
     # Display messages that fit
-    visible_messages = []
-    current_y = y_offset
+    # visible_messages = []
+    # current_y = y_offset
     
-    for msg, color in wrapped_messages[-15:]:
-        if current_y + 20 > chat_box.height - 40:
-            break
+    # for msg, color in wrapped_messages[-15:]:
+    #     if current_y + 20 > chat_box.height - 40:
+    #         break
             
-        visible_messages.append((msg, color, current_y))
-        current_y += 20
+    #     visible_messages.append((msg, color, current_y))
+    #     current_y += 20
     
-    # Draw messages (newest at bottom)
-    for msg, color, y_pos in visible_messages:
-        if font.size(msg)[0] > max_width:
-            msg = msg[:int(len(msg)*0.9)] + "..."
-        msg_text = font.render(msg, True, color)
-        screen.blit(msg_text, (chat_box.x + 10, chat_box.y + y_pos))
+    # # Draw messages (newest at bottom)
+    # for msg, color, y_pos in visible_messages:
+    #     if font.size(msg)[0] > max_width:
+    #         msg = msg[:int(len(msg)*0.9)] + "..."
+    #     msg_text = font.render(msg, True, color)
+    #     screen.blit(msg_text, (chat_box.x + 10, chat_box.y + y_pos))
     
     # Input box
     if user_data["role"] == "guesser" and user_data["name"] not in game_session["correct_guessers"]:
@@ -807,7 +813,6 @@ class DrawingGameNetwork:
                 
                 elif msg_type == "member_left":
                     self.room_members = data["members"]
-                    print(f"Member left: {data['member_id']}")
                     
                 elif msg_type == "offer":
                     await self.handle_offer(data)
@@ -821,7 +826,9 @@ class DrawingGameNetwork:
                     
                 elif msg_type == "draw-data":
                     self.handle_remote_draw(data["data"])
-                             
+                
+                    
+
         except websockets.exceptions.ConnectionClosed:
             print("Connection to server closed")
             
@@ -970,23 +977,38 @@ class DrawingGameNetwork:
             del self.pending_messages[peer_id]
         @channel.on("message")
         def on_message(message):
-            print(f"📨 รับข้อมูลจาก {peer_id}: {message}")
+            #print(f"📨 รับข้อมูลจาก {peer_id}: {message}")
             try:
-                print(f"📨 รับข้อมูลจาก {peer_id}: {message}")
-                data = json.loads(message)
-            
+                #print(f"📨 รับข้อมูลจาก {peer_id}: {message}")
+                data = json.loads(message) 
                 # Handle different message types
-                if data.get("type") == "draw":
-                    self.handle_remote_draw(data["data"])
-                elif data.get("type") == "draw-data":
-                    self.handle_remote_draw(data)
-                elif data.get("type") == "draw_start":
-                    self.handle_remote_draw(data)
+                if data.get("type") in ["draw", "draw-data", "draw_start"]:
+                    draw_data = data.get("data", data) 
+                    self.handle_remote_draw(draw_data)
                 elif data.get("type") == "ping":
                     print(f"🏓 ได้รับ ping จาก {peer_id}")
                     channel.send(json.dumps({"type": "pong"}))
                 elif data.get("type") == "pong":
                     print(f"🏓 ได้รับ pong จาก {peer_id}")
+                elif data.get("type") == "chat":
+                    sender = data.get("sender")
+                    msg = data.get("message")
+                    print(f'ได้รับ chat')
+                    chat_messages.append(f"{sender}: {msg}")
+                elif data.get("type") == "start_timer":
+                    seconds = data.get("time", 60)
+                    print(f"🕑 เริ่มจับเวลา {seconds} วินาที")
+                    game_instance.start_countdown(seconds)
+                elif data.get("type") == "correct_guess":
+                    guesser = data.get("guesser")
+                    print(f"✅ {guesser} เดาคำถูก!")
+                    if guesser not in game_session["correct_guessers"]:
+                        game_session["correct_guessers"].append(guesser)
+                    if guesser not in scores:
+                        scores[guesser] = 0
+                    scores[guesser] += 1
+
+                
                 else:
                     print(f"📥 ได้รับข้อความที่ไม่รู้จัก: {data}")
                 
@@ -1017,7 +1039,7 @@ class DrawingGameNetwork:
                 if channel.readyState == "open":
                     try:
                         channel.send(msg)
-                        print(f"✉️ ส่งข้อมูลวาดไปยัง {target_id}: {msg}")
+                        #print(f"✉️ ส่งข้อมูลวาดไปยัง {target_id}: {msg}")
                     except Exception as e:
                         print(f"❌ ส่งไป {target_id} ไม่สำเร็จ: {e}")
                         # เก็บข้อความไว้ใน pending messages
@@ -1032,42 +1054,55 @@ class DrawingGameNetwork:
 
 
 
-    def handle_remote_draw(self, data):
-        print(f"[DRAW] Handling drawing data: {data}")
-        print(f"Start: {data.get('start_pos')}, End: {data.get('end_pos')}, Color: {data.get('color')}, Brush: {data.get('brush_size')}")
+    def handle_remote_draw(self, draw_data):
+        print(f"[DRAW] Handling drawing data: {draw_data}")
+        #print(f"Start: {data.get('start_pos')}, End: {data.get('end_pos')}, Color: {data.get('color')}, Brush: {data.get('brush_size')}")
         try:
 
-            if not isinstance(data, dict):
+            if not isinstance(draw_data, dict):
                 print("⚠️ ข้อมูลวาดรูปไม่ถูกต้อง")
                 return
             
-            if data.get("type") in ["draw", "draw-data", "draw_start"]:
-                draw_data = data.get("data", data)
+            # ดึงข้อมูลที่จำเป็น
+            start_pos = draw_data.get("start_pos")
+            end_pos = draw_data.get("end_pos")
+            color = tuple(draw_data.get("color", (0, 0, 0)))
+            brush_size = draw_data.get("brush_size", 3)
             
-                # ดึงข้อมูลที่จำเป็น
-                start_pos = draw_data.get("start_pos")
-                end_pos = draw_data.get("end_pos")
-                color = tuple(draw_data.get("color", (0, 0, 0)))
-                brush_size = draw_data.get("brush_size", 3)
-            
-                if not start_pos or not end_pos:
-                    print("⚠️ ข้อมูลตำแหน่งไม่ครบถ้วน")
-                    return
+            if not start_pos or not end_pos:
+                print("⚠️ ข้อมูลตำแหน่งไม่ครบถ้วน")
+                return
                 
             # วาดเส้น
-                pygame.draw.line(self.canvas, color, start_pos, end_pos, brush_size)
-                print(f"✅ วาดเส้นจาก {start_pos} ถึง {end_pos} ด้วยสี {color} และขนาด {brush_size}")
+            pygame.draw.line(self.canvas, color, start_pos, end_pos, brush_size)
+            print(f"✅ วาดเส้นจาก {start_pos} ถึง {end_pos} ด้วยสี {color} และขนาด {brush_size}")
             
                 # อัพเดทหน้าจอ
-                if hasattr(self, 'screen'):
-                    self.screen.blit(self.canvas, (0, 0))
-                    pygame.display.flip()
-                
-            else:
-                print(f"⚠️ ประเภทข้อมูลไม่รู้จัก: {data.get('type')}")
+            if hasattr(self, 'screen'):
+                self.screen.blit(self.canvas, (0, 0))
+                pygame.display.flip()     
             
         except Exception as e:
             print(f"❌ เกิดข้อผิดพลาดขณะวาด: {e}")
+
+    def send_chat_message(self, msg):
+        """ส่งข้อความแชทผ่าน DataChannel"""
+        payload = {
+        "type": "chat",
+        "sender": self.player_id,
+        "message": msg,
+        "room_id": self.room_id
+        }
+        print(f"ส่งข้อความแชท")
+        
+        for target_id, channel in self.data_channels.items():
+            if channel.readyState == "open":
+                try:
+                    channel.send(json.dumps(payload))
+                    print(f"💬 ส่งข้อความแชทไปยัง {target_id}: {msg}")
+                except Exception as e:
+                    print(f"❌ ส่งข้อความแชทไปยัง {target_id} ล้มเหลว: {e}")
+
 
     async def sync_timer(self, duration):
         if self.websocket:
@@ -1096,27 +1131,28 @@ class DrawingGameNetwork:
 
 
     def broadcast_start_timer(self, seconds):
+        end_time = pygame.time.get_ticks() + (seconds * 1000)
+        self.round_end_time = end_time
+
         message = {
             "type": "start_timer",
             "time": seconds,
-            "drawer": game_session["current_drawer"]
+            "end_time": end_time,
+            "drawer": game_session.get("current_drawer", self.player_id)
         }
         for target_id, channel in self.data_channels.items():
-            try:
-                if channel.readyState == "open":
-                    print(f"[DRAW] Sending draw to {target_id}: {json.dumps(message)}")
-                    channel.send(json.dumps(message))
-            except Exception as e:
-                print(f" Failed to send timer to {target_id}: {e}")
+            if channel.readyState == "open":
+                channel.send(json.dumps(message))
+
     def is_channel_ready(self, target_id=None):
         return self.channel_ready_map.get(target_id, False)
 
     
     def send_test_ping(self):
-        print(" [PING] Sending test ping")
+        #print(" [PING] Sending test ping")
         for target_id, channel in self.data_channels.items():
             if channel.readyState == "open":
-                print(f" Sending ping to {target_id}")
+                #print(f" Sending ping to {target_id}")
                 channel.send(json.dumps({"type": "ping"}))
             else:
                 print(f" Channel to {target_id} not ready")
@@ -1125,6 +1161,24 @@ class DrawingGameNetwork:
         for target_id, channel in self.data_channels.items():
             if channel.readyState == "open":
                 channel.send(json.dumps({"type": "pong"}))
+    def send_timer_to_peer(self, peer_id, remaining_time):
+        """ส่งเวลาที่เหลือให้ peer ใหม่ทันที"""
+        if peer_id in self.data_channels:
+            try:
+                msg = json.dumps({
+                    "type": "start_timer",
+                    "time": remaining_time,
+                    "drawer": game_session["current_drawer"]
+                })
+                channel = self.data_channels[peer_id]
+                if channel.readyState == "open":
+                    channel.send(msg)
+                    print(f"🚀 ส่งเวลา {remaining_time}วินาที ให้ {peer_id}")
+                else:
+                    print(f"⏳ Channel ของ {peer_id} ยังไม่พร้อม")
+            except Exception as e:
+                print(f"❌ ไม่สามารถส่ง timer ให้ {peer_id}: {e}")
+
 
 class DrawingGame:
     def __init__(self, room=None):
@@ -1139,8 +1193,8 @@ class DrawingGame:
         self.countdown_running = False
         self.last_tick = 0
         self.last_draw_pos = None
-        self.active_color = None
-        self.active_brushsize = None
+        self.active_color = self.current_color
+        self.active_brushsize = self.brush_size
     # Network setup
         self.network = DrawingGameNetwork(
             player_id=user_data.get("name") or str(uuid.uuid4()),
@@ -1240,11 +1294,10 @@ class DrawingGame:
 
             if event.type == pygame.MOUSEMOTION and event.buttons[0]:
                 draw_data = {
-                "type": "draw",
                 "start_pos": self.last_draw_pos if self.last_draw_pos else event.pos,
                 "end_pos": event.pos,
-                "color": self.active_color or (0 ,0 ,0),
-                "brush_size": self.active_brushsize or 3,
+                "color": active_color,#or (0 ,0 ,0)
+                "brush_size": active_brushsize,#or 3
                 "sender_id": self.network.player_id,
                 "room_id": self.network.room_id
                 }
@@ -1252,13 +1305,27 @@ class DrawingGame:
                 print(f"[DRAW] Sending drawing data: {draw_data}")
                 self.network.send_drawing_data(draw_data)
                 self.last_draw_pos = event.pos  # เก็บตำแหน่งล่าสุดไว้
-
+            if event.type == pygame.MOUSEBUTTONUP and event.button == 1:  # ปล่อยปุ่มซ้าย
+                self.last_draw_pos = None  # รีเซ็ตจุดล่าสุด
+                print("[DRAW] Mouse released. Reset last position.")
+            
+                
 
     def start_countdown(self, duration):
         self.countdown_time = duration
         self.countdown_running = True
         self.last_tick = time.time()
 
+    def update_countdown(self):
+        if self.countdown_running:
+            now = time.time()
+            elapsed = now - self.last_tick
+            if elapsed >= 1:
+                self.countdown_time -= 1
+                self.last_tick = now
+                if self.countdown_time <= 0:
+                    self.countdown_running = False
+                    print("Time's up!")
     def draw_player_list(self):
         """แสดงรายชื่อผู้เล่นในห้อง"""
         if hasattr(self.network, 'room_members') and self.network.room_members:
@@ -1427,6 +1494,9 @@ while running:
                 chat_messages.append(f"System: New round started! Guess the word!")
                 if user_data["name"] not in scores:
                     scores[user_data["name"]] = 0
+                if user_data["role"] == "drawer" and game_instance and game_instance.network:
+                    game_instance.network.broadcast_start_timer(game_session["round_duration"])
+
 
         elif game_state == DRAWING:          
             if event.type == pygame.MOUSEBUTTONDOWN:
@@ -1449,8 +1519,6 @@ while running:
                     elif chat_input_box.collidepoint(event.pos) and user_data["role"] == "guesser" and user_data["name"] not in game_session["correct_guessers"]:
                         chat_active = True
                     
-                        
-
                     else:
                         # Check brush size buttons
                         for i, btn in enumerate(brush_size_buttons):
@@ -1460,14 +1528,17 @@ while running:
                                 status_message = f"Brush size: {brush_size}px"
                                 status_timer = 30
                                 break
-
+                        
+                        #change color
                         # Check color buttons
                         for i, btn in enumerate(color_buttons):
                             if btn["rect"].collidepoint(event.pos):
                                 current_color = btn["color"]
                                 current_color_index = i
                                 if current_mode == ERASE_MODE or current_mode == FILL_MODE:
-                                    current_mode = PEN_MODE
+                                    current_mode = PEN_MODE                               
+                                active_color = current_color
+                                print(f"active color:{active_color}")
                                 status_message = f"Selected color: {btn['name']}"
                                 status_timer = 30
                                 break
@@ -1513,8 +1584,7 @@ while running:
                         if check_guess(chat_input):
                             # Check if all players have guessed or round should end
                             # For now, just clear input
-                            pass
-                        chat_input = ""
+                            pass                               
                 elif event.key == pygame.K_BACKSPACE:
                     chat_input = chat_input[:-1]
                 else:
@@ -1535,14 +1605,14 @@ while running:
                             # Check if all players have guessed or round should end
                             # For now, just clear input
                             pass
+                        else:
+                            if game_instance and game_instance.network:
+                                print(f"chat: {chat_input}")
+                                game_instance.network.send_chat_message(chat_input)
                         chat_input = ""
                 elif event.key == pygame.K_BACKSPACE:
                     chat_input = chat_input[:-1]
-                elif event.key == pygame.K_p:
-                    print("p1")
-                    if game_instance and game_instance.network:
-                        print("p2")
-                        game_instance.network.send_test_ping()
+               
                 else:
                     chat_input += event.unicode
 

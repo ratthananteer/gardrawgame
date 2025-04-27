@@ -1057,8 +1057,8 @@ class DrawingGame:
     
         # If we stop drawing
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-            self.drawing = False
-            self.last_pos = None
+            self.last_draw_pos = None  # รีเซ็ตจุดล่าสุด
+            print("[DRAW] Mouse released. Reset last position.")
 
 
 
