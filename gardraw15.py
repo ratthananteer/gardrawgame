@@ -613,7 +613,7 @@ def word_selection_screen(screen, json_file_path, num_options=3):
 
         pygame.display.flip()
 
-    return selected_word, DRAWING
+    return selected_word #, DRAWING
 
 # Add this to clear player colors when starting a new game
 def reset_player_colors():
@@ -1032,15 +1032,22 @@ class DrawingGameNetwork:
                 elif data.get("type") == "start_game":
                     print("🎯 Game started signal received!")
                     drawer_id = data.get("drawer_id")
+                    sender_id = data.get("sender_id")
                     global game_state
+                    if sender_id == self.player_id:
+                        # ถ้าเราเป็นคนยิง start_game เอง ไม่ต้องทำอะไร
+                        print("👑 Ignoring my own start_game message.")
+                        return
                     if drawer_id == self.player_id:
                         print("🖌️ You are the DRAWER!")
-                        user_data["role"] = "drawer"                   
-                        game_state = WORD_CHOOSING
+                        if game_state != WORD_CHOOSING:
+                            user_data["role"] = "drawer"                   
+                            game_state = WORD_CHOOSING
                     else:
                         print("🔎 You are a GUESSER.")
-                        user_data["role"] = "guesser"                    
-                        game_state = GUESSING
+                        if game_state != GUESSING:
+                            user_data["role"] = "guesser"                    
+                            game_state = GUESSING
           
                 else:
                     print(f"📥 ได้รับข้อความที่ไม่รู้จัก: {data}")
@@ -1211,10 +1218,15 @@ class DrawingGameNetwork:
                 print(f"❌ ไม่สามารถส่ง timer ให้ {peer_id}: {e}")
 
     def send_start_game(self):
-        message = {"type": "start_game"}
+        message = {
+                    "type": "start_game",
+                    "drawer_id": self.player_id,
+                    "sender_id": self.player_id,             
+                   }
         for target_id, channel in self.data_channels.items():
-            if channel.readyState == "open":
-                self.safe_send(channel, json.dumps(message))
+            if target_id != self.player_id:  # ไม่ต้องส่งให้ตัวเอง
+                if channel.readyState == "open":
+                    self.safe_send(channel, json.dumps(message))
         print("📣 Broadcast start_game to all players")
 
 
@@ -1399,17 +1411,17 @@ class LobbyManager:
         global game_state
         print("🎯 Starting game... Broadcasting to others...")
         if self.is_host:
-            print("📣 [LobbyManager] Broadcasting start_game message to everyone...")
-            game_session["current_drawer"] = self.network.player_id
-            message = {
-            "type": "start_game",
-            "drawer_id": self.network.player_id,  # ส่งไปเลยว่าใครเป็น drawer
-        }
-            for target_id, channel in self.network.data_channels.items():
-                if channel.readyState == "open":
-                    self.network.safe_send(channel, json.dumps(message))
+            self.network.send_start_game()
+
+            # 🛠 Host ต้องตั้ง role และสถานะเกมให้เหมือนคนอื่นด้วย (ไม่ปล่อยให้วน)
+            if user_data["role"] == "drawer":
+                game_state = WORD_CHOOSING
+                print("🖌️ (HOST) I'm the drawer! Going to WORD_CHOOSING.")
+            else:
+                game_state = GUESSING
+                print("🔎 (HOST) I'm a guesser! Going to GUESSING.")
+
                     
-        game_state = WORD_CHOOSING
         
 def draw_lobby_screen(lobby_manager):
     screen.fill((255, 255, 255))
@@ -1432,6 +1444,9 @@ def draw_lobby_screen(lobby_manager):
         start_text = font_small.render("Start Game", True, (255, 255, 255))
         screen.blit(start_text, (start_button.x + 20, start_button.y + 10))
 
+    pygame.draw.rect(screen, RED, back_button)
+    back_text = font.render("Back", True, WHITE)
+    screen.blit(back_text, (back_button.x + 30, back_button.y + 10))
     return start_button
 
 
@@ -1595,17 +1610,22 @@ while running:
                 if start_button and start_button.collidepoint(event.pos) and lobby_manager.is_host:
                     print("[Lobby] Start button clicked!")
                     lobby_manager.start_game()
+                elif back_button.collidepoint(event.pos):
+                        game_state = MENU
 
         elif game_state == WORD_CHOOSING:
-            selected_word, game_state = word_selection_screen(screen, "words.json")
-            if selected_word:
-                init_word_hint(selected_word)
-                game_start_time = pygame.time.get_ticks()
-                chat_messages.append(f"System: New round started! Guess the word!")
-                if user_data["name"] not in scores:
-                    scores[user_data["name"]] = 0
-                if user_data["role"] == "drawer" and game_instance and game_instance.network:
-                    game_instance.network.broadcast_start_timer(game_session["round_duration"])
+            if user_data["role"] == "drawer":
+                selected_word = word_selection_screen(screen, "words.json")
+                if selected_word:
+                    init_word_hint(selected_word)
+                    game_start_time = pygame.time.get_ticks()
+                    chat_messages.append(f"System: New round started! Guess the word!")
+                    if user_data["name"] not in scores:
+                        scores[user_data["name"]] = 0
+                    if game_instance and game_instance.network:
+                        game_instance.network.broadcast_start_timer(game_session["round_duration"])
+                    game_state = DRAWING
+                    
 
 
         elif game_state == DRAWING:          
