@@ -170,21 +170,19 @@ score_decay_rate = 2  # Points lost per second
 
 # Updated button positions for new menu layout
 button_width, button_height = 250, 30
-create_room_button = pygame.Rect((WIDTH - button_width) // 2, 260, button_width, button_height)
-join_room_button = pygame.Rect((WIDTH - button_width) // 2, 300, button_width, button_height)
-drawer_demo_button = pygame.Rect((WIDTH - button_width) // 2, 340, button_width, button_height)
-guesser_demo_button = pygame.Rect((WIDTH - button_width) // 2, 380, button_width, button_height)
+create_room_button = pygame.Rect((WIDTH - button_width) // 2, 300, button_width, button_height)
+join_room_button = pygame.Rect((WIDTH - button_width) // 2, 340, button_width, button_height)
 quit_button = pygame.Rect((WIDTH - button_width) // 2, 420, button_width, button_height)
 
 
 # Name input box position updated to be above the first button
 room_input = ""
 input_box_width, input_box_height = 250, 30
-input_box = pygame.Rect((WIDTH - input_box_width) // 2, create_room_button.y - 70, input_box_width, input_box_height)
+input_box = pygame.Rect((WIDTH - input_box_width) // 2, create_room_button.y - 80, input_box_width, input_box_height)
 user_text = user_data["name"] if user_data["name"] else ""
-placeholder_text = "Enter your name (or leave blank for Anonymous)"
+placeholder_text = "Enter your name"
 active = False
-room_placeholder = "Enter room ID (or leave blank for 'default_room')"
+room_placeholder = "Enter room ID"
 room_active = False
 room_box = pygame.Rect((WIDTH - input_box_width) // 2, input_box.y + input_box_height + 10, input_box_width, input_box_height)
 
@@ -1597,31 +1595,6 @@ while running:
                             status_timer = 60
                             game_state = LOBBY
                         
-                    elif drawer_demo_button.collidepoint(event.pos):
-                        if not user_text:
-                            user_text = "Demo Drawer"
-                        user_data["name"] = user_text
-                        user_data["logged_in"] = True
-                        user_data["role"] = "drawer"
-                        save_user_data()
-                        status_message = "Starting drawer demo..."
-                        status_timer = 60
-                        game_session["current_drawer"] = user_data["name"]
-                        game_state = WORD_CHOOSING
-                        
-                    elif guesser_demo_button.collidepoint(event.pos):
-                        if not user_text:
-                            user_text = "Demo Guesser"
-                        user_data["name"] = user_text
-                        user_data["logged_in"] = True
-                        user_data["role"] = "guesser"
-                        save_user_data()
-                        status_message = "Starting guesser demo..."
-                        status_timer = 60
-                        game_session["current_drawer"] = "Computer"
-                        selected_word = random.choice(load_words_from_json("words.json"))
-                        init_word_hint(selected_word)
-                        game_state = GUESSING
                         
                     elif quit_button.collidepoint(event.pos):
                         running = False
@@ -1843,9 +1816,7 @@ while running:
 
         pygame.draw.rect(screen, BLUE, create_room_button, border_radius=10)
         pygame.draw.rect(screen, GREEN, join_room_button, border_radius=10)
-        pygame.draw.rect(screen, PURPLE, drawer_demo_button, border_radius=10)
-        pygame.draw.rect(screen, ORANGE, guesser_demo_button, border_radius=10)
-        pygame.draw.rect(screen, RED, quit_button, border_radius=10)
+        pygame.draw.rect(screen, ORANGE, quit_button, border_radius=10)
         
         # Button labels
         create_text = font.render("Create Room", True, WHITE)
@@ -1863,8 +1834,6 @@ while running:
         screen.blit(room_text_surface, (room_box.x + 10, room_box.y + 10))
         screen.blit(create_text, (create_room_button.x + 70, create_room_button.y + 10))
         screen.blit(join_text, (join_room_button.x + 80, join_room_button.y + 10))
-        screen.blit(drawer_text, (drawer_demo_button.x + 70, drawer_demo_button.y + 10))
-        screen.blit(guesser_text, (guesser_demo_button.x + 65, guesser_demo_button.y + 10))
         screen.blit(quit_text, (quit_button.x + 100, quit_button.y + 10))
 
 
